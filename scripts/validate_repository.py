@@ -96,22 +96,20 @@ if str(legacy.loc["UDP0108", "include"]).lower() not in {"false", "0"}:
     fail("UDP0108 must remain excluded from biological inference")
 
 env = (ROOT / "environment.yml").read_text(encoding="utf-8")
-for token in ["matplotlib-venn=1.1", "python=3.12.13"]:
+for token in ["python=3.12.13", "matplotlib-venn=1.1", "milaboratories", "mixcr=4.7.0"]:
     if token not in env:
         fail(f"environment missing reproducibility token: {token}")
-if "mixcr=" in env.lower() or "milaboratories" in env.lower():
-    fail("MiXCR must stay external to conda, matching the working mouse-project setup")
 
 prep = (ROOT / "scripts/preprocess_human_trb.py").read_text(encoding="utf-8")
 for token in [
-    "EXPECTED_NEW_LANES", "~/soft/mixcr/mixcr", "-Xmx", "\"-f\"",
+    "EXPECTED_NEW_LANES", "MEASLES_MIXCR_BIN", "-Xmx", "\"-f\"",
     "--threads", "fastq_audit.csv", "_1.fq.gz", "UDP0107", "L{{{{n}}}}",
 ]:
     if token not in prep:
         fail(f"preprocessing contract missing token: {token}")
 
 smoke = (ROOT / "scripts/mixcr_smoke_test.py").read_text(encoding="utf-8")
-for token in ["--limit-input", "~/soft/mixcr/mixcr", "-Xmx4g", "MiXCR smoke test passed"]:
+for token in ["--limit-input", "MEASLES_MIXCR_BIN", "-Xmx4g", "MiXCR smoke test passed"]:
     if token not in smoke:
         fail(f"MiXCR smoke-test contract missing token: {token}")
 
