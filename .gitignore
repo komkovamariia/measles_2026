@@ -9,16 +9,16 @@ raw/
 *.vdjca
 *.clns
 *.clna
+results/mixcr/
+results/clonotypes/
 
 # Runtime/cache
 work/
 logs/*.log
+audit_runs/*.executed.ipynb
 resources/IEDB_data.tsv
 .ipynb_checkpoints/
 __pycache__/
 *.pyc
 
-# Large generated MiXCR directories
-results/mixcr/
-
-# Keep small analysis tables and figures if desired
+# Small summary CSV files and figures remain visible to Git if the user wants to commit them.
