@@ -31,18 +31,14 @@ for col in ["include", "is_control", "fastq_ready"]:
 
 manifest["analysis_timepoint"] = pd.to_numeric(manifest["analysis_timepoint"], errors="coerce")
 
-# In the study naming scheme the first integer is the sequencing-run index,
-# the last .1/.2/.3 is the time point, and the letter code identifies the patient.
-# Example: 10_PM1_009.1 and 12_PM1_009.2 -> the same patient PM1.
-# CGIMU controls are independent people, therefore their full IDs are retained.
-def canonical_patient(value):
-    text = str(value).strip()
-    if text.startswith("CGIMU_"):
-        return text
-    return text.split("_")[0]
-
-manifest["source_patient_id"] = manifest["patient_id"].astype(str)
-manifest["patient_id"] = manifest["source_patient_id"].map(canonical_patient)
+# Patient identity is the FULL biological code between the sequencing index and
+# the final time-point suffix. Examples:
+#   15_CA1_013.1 and 19_CA1_013.2 -> the same patient CA1_013
+#   22_CA1_017.1                  -> a different patient CA1_017
+# The manifest already stores this full code in patient_id, so it must not be
+# shortened to the first token such as CA1.
+manifest["source_patient_id"] = manifest["patient_id"].astype(str).str.strip()
+manifest["patient_id"] = manifest["source_patient_id"]
 manifest[["library_id", "source_patient_id", "patient_id", "analysis_timepoint", "age_group", "disease_status"]].to_csv(
     RESULTS / "patient_id_mapping.csv", index=False
 )
