@@ -1,3 +1,22 @@
+from pathlib import Path
+import os
+
+import numpy as np
+import pandas as pd
+import requests
+
+ROOT = Path(os.environ.get("MEASLES_REPO", Path.cwd())).resolve()
+RESULTS = ROOT / "results"
+
+# The notebook runs analysis_01_prepare.py first. Loading the persisted table here
+# also makes this script robust to namespace changes between notebook sections.
+clones_path = RESULTS / "combined_trb_clonotypes.csv"
+if not clones_path.exists():
+    raise FileNotFoundError("Run analysis_01_prepare.py first: combined_trb_clonotypes.csv is missing.")
+clones = pd.read_csv(clones_path)
+clones["count"] = pd.to_numeric(clones["count"], errors="coerce").fillna(0)
+clones["analysis_timepoint"] = pd.to_numeric(clones["analysis_timepoint"], errors="coerce")
+
 IEDB_URL = "https://raw.githubusercontent.com/IEDB/TCRMatch/master/data/IEDB_data.tsv"
 iedb_override = os.environ.get("MEASLES_IEDB_FILE", "").strip()
 iedb_path = Path(iedb_override).expanduser() if iedb_override else ROOT / "resources" / "IEDB_data.tsv"
@@ -17,11 +36,13 @@ if not set(expected).issubset(iedb.columns):
     else:
         raise ValueError(f"Unexpected IEDB TCRMatch table columns: {list(iedb.columns)}")
 
+
 def trim_cdr3(seq):
     seq = str(seq).strip()
     if len(seq) >= 2 and seq.startswith("C") and seq[-1] in {"F", "W"}:
         return seq[1:-1]
     return seq
+
 
 def pathogen_label(row):
     text = (str(row.get("organism", "")) + " " + str(row.get("antigen", ""))).lower()
@@ -34,6 +55,7 @@ def pathogen_label(row):
     if "clostridium tetani" in text or "tetanus" in text:
         return "Tetanus"
     return np.nan
+
 
 iedb["pathogen"] = iedb.apply(pathogen_label, axis=1)
 reference = iedb[iedb["pathogen"].notna()].copy()
@@ -48,8 +70,6 @@ matches = query.merge(
     on="cdr3_trimmed",
     how="inner",
 )
-
-# A CDR3 may have multiple IEDB records for the same pathogen. Count the sample clonotype once per pathogen.
 matched_unique = (
     matches.sort_values(["sample_id", "pathogen", "cdr3aa"])
     .drop_duplicates(["sample_id", "pathogen", "cdr3aa"])
