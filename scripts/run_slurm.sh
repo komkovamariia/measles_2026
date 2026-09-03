@@ -29,8 +29,6 @@ conda activate measles-tcr-2026
 export MEASLES_NEW_FASTQ_DIR="${MEASLES_NEW_FASTQ_DIR:-/projects/mice_transplant_2025/raw/20260817_161454/Fastq}"
 export MEASLES_REQUIRE_ALL_INPUTS=1
 
-# The colleague explicitly requested inclusion of the old samples. Locate them
-# automatically, but stop instead of silently running a partial cohort.
 if [[ -z "${MEASLES_LEGACY_FASTQ_DIR:-}" ]]; then
   legacy_named="$(find /projects/mice_transplant_2025 -type d -name 'pe150_res' -print -quit 2>/dev/null || true)"
   if [[ -n "$legacy_named" ]]; then
@@ -51,7 +49,8 @@ fi
 
 echo "New FASTQ:    $MEASLES_NEW_FASTQ_DIR"
 echo "Legacy FASTQ: $MEASLES_LEGACY_FASTQ_DIR"
-mixcr -v | head -n 1
+mixcr -v > results/slurm_mixcr_version.txt 2>&1
+head -n 1 results/slurm_mixcr_version.txt
 python scripts/validate_repository.py
 
 python scripts/run_pipeline.py \
