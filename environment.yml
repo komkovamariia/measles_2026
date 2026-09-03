@@ -3,22 +3,22 @@ name: measles-tcr-2026
 channels:
   - conda-forge
   - bioconda
+  - milaboratories
 
 dependencies:
-  - python=3.12
-  - pandas
-  - numpy
-  - scipy
-  - matplotlib
-  - matplotlib-venn
-  - seaborn
-  - statsmodels
-  - scikit-learn
+  - python=3.12.13
+  - numpy=2.5.1
+  - pandas=3.0.3
+  - scipy=1.18.0
+  - statsmodels=0.14
+  - matplotlib=3.10.1
+  - seaborn=0.13.2
+  - matplotlib-venn=1.1
   - requests
   - tqdm
   - jupyterlab
   - ipykernel
   - nbclient
-  - nbformat
+  - nbformat=5.10.4
   - pyyaml
-  - mixcr
+  - milaboratories::mixcr=4.7.0
