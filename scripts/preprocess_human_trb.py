@@ -13,12 +13,16 @@ import pandas as pd
 ROOT = Path(os.environ.get("MEASLES_REPO", Path.cwd())).resolve()
 MANIFEST = ROOT / "config" / "sample_manifest.csv"
 KNOWN_ISSUES = ROOT / "config" / "metadata_known_issues.csv"
-NEW_DIR = Path(os.environ.get("MEASLES_NEW_FASTQ_DIR", "/projects/mice_transplant_2025/raw/20260817_161454/Fastq")).expanduser()
+NEW_DIR = Path(os.environ.get(
+    "MEASLES_NEW_FASTQ_DIR",
+    "/projects/mice_transplant_2025/raw/20260817_161454/Fastq",
+)).expanduser()
 legacy_value = os.environ.get("MEASLES_LEGACY_FASTQ_DIR", "").strip()
 LEGACY_DIR = Path(legacy_value).expanduser() if legacy_value else None
 PRESET = os.environ.get("MEASLES_MIXCR_PRESET", "milab-human-dna-tcr-multiplex")
 CPUS = int(os.environ.get("MEASLES_CPUS", os.environ.get("SLURM_CPUS_PER_TASK", "1")))
 THREADS_PER_SAMPLE = int(os.environ.get("MEASLES_THREADS_PER_SAMPLE", "4"))
+MIXCR_MEMORY_GB = int(os.environ.get("MEASLES_MIXCR_MEMORY_GB", "8"))
 PILOT = os.environ.get("MEASLES_PILOT", "0") == "1"
 REQUIRE_ALL = os.environ.get("MEASLES_REQUIRE_ALL_INPUTS", "1") == "1" and not PILOT
 EXPECTED_NEW_LANES = {"001", "002", "003", "004"}
@@ -32,6 +36,28 @@ CLONOTYPES = RESULTS / "clonotypes"
 for p in [RESULTS, FIGURES, LOGS, INPUTS, MIXCR_DIR, CLONOTYPES]:
     p.mkdir(parents=True, exist_ok=True)
 
+
+def resolve_mixcr() -> str:
+    """Prefer the exact external MiXCR location used by presenting_repseq.ipynb."""
+    configured = os.environ.get("MEASLES_MIXCR_BIN", "").strip()
+    candidates: list[Path] = []
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    candidates.append(Path.home() / "soft" / "mixcr" / "mixcr")
+    path_mixcr = shutil.which("mixcr")
+    if path_mixcr:
+        candidates.append(Path(path_mixcr))
+    for candidate in candidates:
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return str(candidate.resolve())
+    raise RuntimeError(
+        "MiXCR executable was not found. The mouse project used ~/soft/mixcr/mixcr. "
+        "Set MEASLES_MIXCR_BIN explicitly if the executable is elsewhere."
+    )
+
+
+MIXCR_BIN = resolve_mixcr()
+
 manifest = pd.read_csv(MANIFEST)
 for col in ["include", "is_control"]:
     manifest[col] = manifest[col].astype(str).str.lower().isin(["true", "1", "yes"])
@@ -40,7 +66,6 @@ manifest["analysis_timepoint"] = pd.to_numeric(manifest["analysis_timepoint"], e
 issues = pd.read_csv(KNOWN_ISSUES)
 auto_issues: list[dict] = []
 
-# Metadata checks.
 dup_mask = manifest.duplicated(["patient_id", "analysis_timepoint", "batch"], keep=False)
 for _, r in manifest[dup_mask].iterrows():
     auto_issues.append({
@@ -57,11 +82,10 @@ for _, r in manifest[manifest.age_group.eq("unknown")].iterrows():
         "note": "Patient is absent from the current child/adult lists; retained and excluded from age-stratified inference.",
     })
 
-# New FASTQ audit. The study table contains 96 expected sequencing indices. Gaps are valid.
 NEW_RE = re.compile(r"^(?P<idx>\d+)_S\d+_L(?P<lane>\d{3})_R(?P<read>[12])_001\.fastq\.gz$")
 expected_new = set(manifest.loc[manifest.batch.eq("new"), "sequencing_index"].astype(str))
 observed_by_index: dict[str, dict[tuple[str, str], Path]] = {}
-unexpected_files = []
+unexpected_files: list[str] = []
 if NEW_DIR.exists():
     for path in NEW_DIR.glob("*.fastq.gz"):
         m = NEW_RE.match(path.name)
@@ -84,8 +108,8 @@ else:
 def discover_new(index) -> tuple[list[tuple[Path, Path]], list[str]]:
     idx = str(index)
     found = observed_by_index.get(idx, {})
-    pairs = []
-    missing = []
+    pairs: list[tuple[Path, Path]] = []
+    missing: list[str] = []
     for lane in sorted(EXPECTED_NEW_LANES):
         p1 = found.get((lane, "1"))
         p2 = found.get((lane, "2"))
@@ -99,39 +123,34 @@ def discover_new(index) -> tuple[list[tuple[Path, Path]], list[str]]:
 
 
 def discover_legacy(key) -> list[tuple[Path, Path]]:
-    """Find old paired files such as FT..._L01_UDP0112_1.fq.gz/_2.fq.gz."""
+    """Find files such as FT..._L01_UDP0112_1.fq.gz and _2.fq.gz."""
     if LEGACY_DIR is None or not LEGACY_DIR.exists():
         return []
-
-    read1_candidates: set[Path] = set()
-    patterns = [
+    r1_candidates: set[Path] = set()
+    for pattern in [
         f"*{key}*_1.fq.gz",
         f"*{key}*_1.fastq.gz",
         f"*{key}*_R1*.fq.gz",
         f"*{key}*_R1*.fastq.gz",
-    ]
-    for pattern in patterns:
-        read1_candidates.update(LEGACY_DIR.rglob(pattern))
+    ]:
+        r1_candidates.update(LEGACY_DIR.rglob(pattern))
 
-    pairs = []
-    for p1 in sorted(read1_candidates):
+    pairs: list[tuple[Path, Path]] = []
+    for p1 in sorted(r1_candidates):
         s = str(p1)
-        candidate_strings = []
+        possible: list[str] = []
         if s.endswith("_1.fq.gz"):
-            candidate_strings.append(s[:-8] + "_2.fq.gz")
+            possible.append(s[:-8] + "_2.fq.gz")
         if s.endswith("_1.fastq.gz"):
-            candidate_strings.append(s[:-11] + "_2.fastq.gz")
-        candidate_strings.extend([
-            s.replace("_R1_", "_R2_"),
-            s.replace("R1", "R2"),
-        ])
-        p2 = next((Path(x) for x in candidate_strings if x != s and Path(x).exists()), None)
+            possible.append(s[:-11] + "_2.fastq.gz")
+        possible.extend([s.replace("_R1_", "_R2_"), s.replace("R1", "R2")])
+        p2 = next((Path(x) for x in possible if x != s and Path(x).exists()), None)
         if p2 is not None:
             pairs.append((p1, p2))
     return pairs
 
 
-def link_pairs(library_id, pairs):
+def link_pairs(library_id: str, pairs: list[tuple[Path, Path]]) -> None:
     for old in INPUTS.glob(f"{library_id}_L*_R*.fastq.gz"):
         old.unlink()
     for lane_i, (p1, p2) in enumerate(pairs, start=1):
@@ -146,42 +165,35 @@ for _, r in manifest.iterrows():
     if r.batch == "new":
         pairs, missing = discover_new(r.sequencing_index)
         ready = len(pairs) == 4 and not missing
-        fastq_audit_rows.append({
-            "library_id": r.library_id,
-            "sequencing_index": r.sequencing_index,
-            "batch": "new",
-            "n_complete_pairs": len(pairs),
-            "missing": ";".join(missing),
-            "fastq_ready": ready,
-        })
-        if not ready:
-            auto_issues.append({
-                "library_id": r.library_id,
-                "raw_sample_id": r.raw_sample_id,
-                "issue": "incomplete_new_fastq",
-                "note": f"Expected four paired lanes L001-L004; complete_pairs={len(pairs)}; missing={';'.join(missing)}",
-            })
+        missing_text = ";".join(missing)
     else:
         pairs = discover_legacy(r.fastq_key)
         ready = len(pairs) >= 1
-        fastq_audit_rows.append({
-            "library_id": r.library_id,
-            "sequencing_index": r.sequencing_index,
-            "batch": "legacy",
-            "n_complete_pairs": len(pairs),
-            "missing": "" if ready else "legacy_read1_read2_pair",
-            "fastq_ready": ready,
-        })
-        if not ready:
-            auto_issues.append({
-                "library_id": r.library_id,
-                "raw_sample_id": r.raw_sample_id,
-                "issue": "missing_legacy_fastq",
-                "note": "No complete old _1/_2 or R1/R2 pair was found in MEASLES_LEGACY_FASTQ_DIR.",
-            })
+        missing_text = "" if ready else "legacy_read1_read2_pair"
 
-    if ready:
+    fastq_audit_rows.append({
+        "library_id": r.library_id,
+        "sequencing_index": r.sequencing_index,
+        "batch": r.batch,
+        "n_complete_pairs": len(pairs),
+        "missing": missing_text,
+        "fastq_ready": ready,
+    })
+
+    if not ready:
+        auto_issues.append({
+            "library_id": r.library_id,
+            "raw_sample_id": r.raw_sample_id,
+            "issue": "incomplete_new_fastq" if r.batch == "new" else "missing_legacy_fastq",
+            "note": (
+                f"Expected four paired lanes L001-L004; complete_pairs={len(pairs)}; missing={missing_text}"
+                if r.batch == "new"
+                else "No complete old _1/_2 or R1/R2 pair was found in MEASLES_LEGACY_FASTQ_DIR."
+            ),
+        })
+    else:
         link_pairs(r.library_id, pairs)
+
     resolved_rows.append({**r.to_dict(), "fastq_ready": ready, "n_fastq_pairs": len(pairs)})
 
 for name in unexpected_files:
@@ -189,7 +201,7 @@ for name in unexpected_files:
         "library_id": "UNEXPECTED_FASTQ",
         "raw_sample_id": name,
         "issue": "unexpected_fastq",
-        "note": "FASTQ is not one of the sequencing indices expected from the current study table or does not follow the expected naming scheme.",
+        "note": "FASTQ is outside the current 96-record study manifest or has an unexpected filename.",
     })
 
 resolved = pd.DataFrame(resolved_rows)
@@ -213,11 +225,10 @@ if REQUIRE_ALL:
             f"Missing/incomplete libraries: {ids}. See results/fastq_audit.csv and results/metadata_issues.csv."
         )
 
-if shutil.which("mixcr") is None:
-    raise RuntimeError("MiXCR is not available in PATH. Activate the environment from environment.yml.")
-version = subprocess.run(["mixcr", "-v"], capture_output=True, text=True, check=True)
+version = subprocess.run([MIXCR_BIN, "-v"], capture_output=True, text=True, check=True)
 (RESULTS / "mixcr_version.txt").write_text(version.stdout + version.stderr, encoding="utf-8")
-print(version.stdout.splitlines()[0] if version.stdout else "MiXCR version recorded")
+print("MiXCR binary:", MIXCR_BIN)
+print((version.stdout or version.stderr).splitlines()[0])
 print("MiXCR preset:", PRESET)
 
 pilot_ids = ["new_10", "new_11", "new_12", "legacy_UDP0107", "legacy_UDP0108"]
@@ -238,6 +249,12 @@ def exported_table_is_valid(path: Path) -> bool:
     return has_aa and has_count
 
 
+def log_tail(path: Path, n: int = 60) -> str:
+    if not path.exists():
+        return "<log file was not created>"
+    return "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-n:])
+
+
 def run_mixcr(row):
     lib = row.library_id
     final_tsv = CLONOTYPES / f"{lib}.tsv"
@@ -250,14 +267,24 @@ def run_mixcr(row):
     log_file = LOGS / f"mixcr_{lib}.log"
 
     cmd = [
-        "mixcr", "analyze", PRESET,
+        MIXCR_BIN,
+        f"-Xmx{MIXCR_MEMORY_GB}g",
+        "analyze",
+        PRESET,
+        "-f",
         "--threads", str(THREADS_PER_SAMPLE),
-        "--force-overwrite",
-        r1_pattern, r2_pattern, str(prefix),
+        r1_pattern,
+        r2_pattern,
+        str(prefix),
     ]
     with log_file.open("w", encoding="utf-8") as log:
         log.write("COMMAND: " + " ".join(cmd) + "\n")
-        subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=True, cwd=ROOT)
+        proc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"{lib}: MiXCR analyze failed with exit code {proc.returncode}. "
+            f"Last lines of {log_file}:\n{log_tail(log_file)}"
+        )
 
     candidates = sorted(MIXCR_DIR.glob(f"{lib}*.clns"))
     if not candidates:
@@ -265,24 +292,34 @@ def run_mixcr(row):
     clns = candidates[0]
 
     export_cmd = [
-        "mixcr", "exportClones",
+        MIXCR_BIN,
+        f"-Xmx{MIXCR_MEMORY_GB}g",
+        "exportClones",
         "--dont-split-files",
         "--chains", "TRB",
         "--filter-out-of-frames",
         "--filter-stops",
-        str(clns), str(final_tsv),
+        str(clns),
+        str(final_tsv),
     ]
     with log_file.open("a", encoding="utf-8") as log:
         log.write("\nCOMMAND: " + " ".join(export_cmd) + "\n")
-        subprocess.run(export_cmd, stdout=log, stderr=subprocess.STDOUT, check=True, cwd=ROOT)
-
+        proc = subprocess.run(export_cmd, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"{lib}: MiXCR exportClones failed with exit code {proc.returncode}. "
+            f"Last lines of {log_file}:\n{log_tail(log_file)}"
+        )
     if not exported_table_is_valid(final_tsv):
         raise RuntimeError(f"MiXCR export for {lib} is missing required CDR3/count columns.")
     return lib, "done"
 
 
 max_workers = max(1, CPUS // max(1, THREADS_PER_SAMPLE))
-print(f"CPUs={CPUS}; threads/sample={THREADS_PER_SAMPLE}; concurrent MiXCR samples={max_workers}")
+print(
+    f"CPUs={CPUS}; threads/sample={THREADS_PER_SAMPLE}; "
+    f"MiXCR JVM memory/sample={MIXCR_MEMORY_GB}G; concurrent MiXCR samples={max_workers}"
+)
 print("Libraries selected for MiXCR:", len(run_table))
 statuses = {}
 with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -295,14 +332,17 @@ with ThreadPoolExecutor(max_workers=max_workers) as pool:
             print(lib, status)
         except Exception as exc:
             statuses[lib] = f"FAILED: {exc}"
-            print(lib, statuses[lib])
+            print(statuses[lib])
+            pd.DataFrame([
+                {"library_id": k, "mixcr_status": v} for k, v in statuses.items()
+            ]).to_csv(RESULTS / "mixcr_run_status.csv", index=False)
             raise
 
-pd.DataFrame([{"library_id": k, "mixcr_status": v} for k, v in statuses.items()]).to_csv(
-    RESULTS / "mixcr_run_status.csv", index=False
-)
+pd.DataFrame([
+    {"library_id": k, "mixcr_status": v} for k, v in statuses.items()
+]).to_csv(RESULTS / "mixcr_run_status.csv", index=False)
 
-# Compact QC from the exported productive TRB clonotypes.
+
 def pick_col(df, candidates):
     for c in candidates:
         if c in df.columns:
@@ -339,7 +379,7 @@ for _, r in resolved.iterrows():
 qc = pd.DataFrame(qc_rows)
 qc.to_csv(RESULTS / "sample_qc.csv", index=False)
 
-# Reproduce the previously observed UDP0107/UDP0108 QC signal when both are available.
+
 def exact_cdr3_set(lib):
     path = CLONOTYPES / f"{lib}.tsv"
     if not exported_table_is_valid(path):
