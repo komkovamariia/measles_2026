@@ -25,7 +25,9 @@ def execute_notebook(path: Path, extra_env: dict[str, str]) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     old_env = {k: os.environ.get(k) for k in extra_env}
+    old_cwd = Path.cwd()
     os.environ.update(extra_env)
+    os.chdir(ROOT)
     started = time.time()
 
     with log_path.open("a", encoding="utf-8") as log:
@@ -36,6 +38,7 @@ def execute_notebook(path: Path, extra_env: dict[str, str]) -> None:
             log.flush()
 
         say(f"START {path.name}")
+        say(f"ROOT {ROOT}")
         notebook = nbformat.read(path, as_version=4)
         client = NotebookClient(
             notebook,
@@ -53,11 +56,36 @@ def execute_notebook(path: Path, extra_env: dict[str, str]) -> None:
             say(f"FAILED {path.name}; partial executed notebook saved to {output}")
             raise
         finally:
+            os.chdir(old_cwd)
             for key, value in old_env.items():
                 if value is None:
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
+
+
+def require_files(paths: list[str], label: str) -> None:
+    missing = []
+    for rel in paths:
+        path = ROOT / rel
+        if not path.exists() or (path.is_file() and path.stat().st_size == 0):
+            missing.append(rel)
+    if missing:
+        raise RuntimeError(f"{label} verification failed; missing: {missing}")
+
+
+def verify_prepare_outputs() -> None:
+    require_files([
+        "results/sample_manifest_resolved.csv",
+        "results/fastq_audit.csv",
+        "results/sample_qc.csv",
+        "results/mixcr_run_status.csv",
+    ], "Preprocessing")
+
+    clonotypes = list((ROOT / "results" / "clonotypes").glob("*.tsv"))
+    if not clonotypes:
+        raise RuntimeError("Preprocessing verification failed; no MiXCR clonotype TSV files were produced.")
+    print(f"Preprocessing verification passed. Clonotype TSV files: {len(clonotypes)}")
 
 
 def verify_full_outputs() -> None:
@@ -75,27 +103,21 @@ def verify_full_outputs() -> None:
         "results/statistical_tests.csv",
         "results/result_summary.txt",
     ]
-    required += [f"figures/{i:02d}_" for i in range(1, 11)]
+    require_files(required, "Full output")
 
     missing = []
-    for item in required:
-        if item.endswith("_"):
-            prefix = Path(item).name
-            parent = ROOT / Path(item).parent
-            if not any(p.name.startswith(prefix) and p.suffix == ".png" for p in parent.glob("*.png")):
-                missing.append(item + "*.png")
-        else:
-            path = ROOT / item
-            if not path.exists() or (path.is_file() and path.stat().st_size == 0):
-                missing.append(item)
+    for i in range(1, 11):
+        prefix = f"{i:02d}_"
+        if not any(p.name.startswith(prefix) and p.suffix == ".png" for p in (ROOT / "figures").glob("*.png")):
+            missing.append(f"figures/{prefix}*.png")
 
     patient_venns = list((ROOT / "figures" / "patients").glob("*_aav_venn.png"))
     if not patient_venns:
         missing.append("figures/patients/*_aav_venn.png")
 
     if missing:
-        raise RuntimeError(f"Output verification failed; missing: {missing}")
-    print(f"Output verification passed. Patient Venn figures: {len(patient_venns)}")
+        raise RuntimeError(f"Full output verification failed; missing: {missing}")
+    print(f"Full output verification passed. Patient Venn figures: {len(patient_venns)}")
 
 
 def main() -> None:
@@ -117,9 +139,14 @@ def main() -> None:
         "MEASLES_PILOT": "1" if args.pilot else "0",
     }
 
-    selected = ["prepare", "analysis"] if args.stage == "all" else [args.stage]
-    for stage in selected:
-        execute_notebook(STAGES[stage], env)
+    if args.stage in {"prepare", "all"}:
+        execute_notebook(STAGES["prepare"], env)
+        verify_prepare_outputs()
+
+    if args.stage in {"analysis", "all"}:
+        if args.stage == "analysis":
+            verify_prepare_outputs()
+        execute_notebook(STAGES["analysis"], env)
 
     if args.stage == "all" and not args.pilot:
         verify_full_outputs()
