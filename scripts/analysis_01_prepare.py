@@ -1,16 +1,11 @@
 from pathlib import Path
-import os, warnings
+import os
+import warnings
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy.stats import mannwhitneyu, wilcoxon
-from statsmodels.stats.multitest import multipletests
-import requests
 
 warnings.filterwarnings("ignore", category=FutureWarning)
-sns.set_context("notebook")
 
 ROOT = Path(os.environ.get("MEASLES_REPO", Path.cwd())).resolve()
 RESULTS = ROOT / "results"
@@ -35,13 +30,14 @@ manifest["analysis_timepoint"] = pd.to_numeric(manifest["analysis_timepoint"], e
 # the final time-point suffix. Examples:
 #   15_CA1_013.1 and 19_CA1_013.2 -> the same patient CA1_013
 #   22_CA1_017.1                  -> a different patient CA1_017
-# The manifest already stores this full code in patient_id, so it must not be
-# shortened to the first token such as CA1.
+# The manifest already stores the full biological code in patient_id.
 manifest["source_patient_id"] = manifest["patient_id"].astype(str).str.strip()
 manifest["patient_id"] = manifest["source_patient_id"]
-manifest[["library_id", "source_patient_id", "patient_id", "analysis_timepoint", "age_group", "disease_status"]].to_csv(
-    RESULTS / "patient_id_mapping.csv", index=False
-)
+manifest[[
+    "library_id", "source_patient_id", "patient_id", "analysis_timepoint",
+    "age_group", "disease_status"
+]].to_csv(RESULTS / "patient_id_mapping.csv", index=False)
+
 
 def stage_from_row(row):
     if bool(row["is_control"]):
@@ -55,14 +51,16 @@ def stage_from_row(row):
         return "follow_up"
     return "unknown"
 
+
 manifest["stage"] = manifest.apply(stage_from_row, axis=1)
-manifest[["library_id", "patient_id", "age_group", "stage", "batch", "include"]].head()
+
 
 def pick_col(df, candidates):
     for c in candidates:
         if c in df.columns:
             return c
     return None
+
 
 def clean_gene(value):
     if pd.isna(value):
@@ -71,6 +69,7 @@ def clean_gene(value):
     text = text.split("(")[0].strip()
     text = text.split("*")[0].strip()
     return text if text else np.nan
+
 
 rows = []
 selected_manifest = manifest[(manifest["include"]) & (manifest["fastq_ready"])].copy()
@@ -105,7 +104,11 @@ for r in selected_manifest.itertuples(index=False):
         "v_gene": df[v_col].map(clean_gene) if v_col else np.nan,
         "j_gene": df[j_col].map(clean_gene) if j_col else np.nan,
     })
-    small = small[(small["cdr3aa"].notna()) & (small["cdr3aa"] != "nan") & (small["count"] > 0)]
+    small = small[
+        small["cdr3aa"].notna()
+        & small["cdr3aa"].ne("nan")
+        & small["count"].gt(0)
+    ].copy()
     rows.append(small)
 
 if not rows:
@@ -114,23 +117,34 @@ if not rows:
 library_clones = pd.concat(rows, ignore_index=True)
 library_clones.to_csv(RESULTS / "library_trb_clonotypes.csv", index=False)
 
-# Sum technical libraries that resolve to one biological patient/time point.
-# V/J and metadata are taken from the highest-count observation when calls disagree.
+# Sum only libraries that resolve to the same biological patient AND the same
+# analysis time point. This handles duplicate/technical libraries without ever
+# merging different longitudinal observations such as CA1_013.1 and CA1_013.2.
+group_keys = ["patient_id", "analysis_timepoint", "stage", "cdr3aa"]
 best_annotation = (
     library_clones.sort_values("count", ascending=False)
-    .drop_duplicates(["patient_id", "stage", "cdr3aa"])
-    [["patient_id", "stage", "cdr3aa", "v_gene", "j_gene", "age_group", "analysis_timepoint", "disease_status", "is_control"]]
+    .drop_duplicates(group_keys)
+    [group_keys + ["v_gene", "j_gene", "age_group", "disease_status", "is_control"]]
 )
-counts = (
-    library_clones.groupby(["patient_id", "stage", "cdr3aa"], as_index=False)["count"].sum()
-)
-clones = counts.merge(best_annotation, on=["patient_id", "stage", "cdr3aa"], how="left")
-clones["sample_id"] = clones["patient_id"].astype(str) + "__" + clones["stage"].astype(str)
+counts = library_clones.groupby(group_keys, as_index=False, dropna=False)["count"].sum()
+clones = counts.merge(best_annotation, on=group_keys, how="left")
 
+# Controls do not have clinical time points. Cases use an explicit T1/T2/T3 key.
+def make_sample_id(row):
+    if bool(row["is_control"]):
+        return f"{row['patient_id']}__healthy"
+    tp = row["analysis_timepoint"]
+    if pd.notna(tp):
+        return f"{row['patient_id']}__T{int(tp)}"
+    return f"{row['patient_id']}__unknown"
+
+
+clones["sample_id"] = clones.apply(make_sample_id, axis=1)
 clones.to_csv(RESULTS / "combined_trb_clonotypes.csv", index=False)
 print("Biological samples:", clones["sample_id"].nunique())
-print("Canonical patients:", clones["patient_id"].nunique())
+print("Biological patients:", clones["patient_id"].nunique())
 print("Unique CDR3β rows:", len(clones))
+
 
 def shannon_from_counts(counts):
     counts = np.asarray(counts, dtype=float)
@@ -140,16 +154,22 @@ def shannon_from_counts(counts):
     p = counts / counts.sum()
     return float(-(p * np.log(p)).sum())
 
+
 def rarefy_counts(counts, depth, rng):
-    counts = np.asarray(counts, dtype=float)
-    total = counts.sum()
+    """Downsample reads WITHOUT replacement to a common sequencing depth."""
+    counts = np.rint(np.asarray(counts, dtype=float)).astype(np.int64)
+    counts[counts < 0] = 0
+    total = int(counts.sum())
     if total < depth or depth <= 0:
         return None
-    p = counts / total
-    return rng.multinomial(int(depth), p)
+    if total == depth:
+        return counts.copy()
+    return rng.multivariate_hypergeometric(counts, int(depth))
+
 
 sample_totals = clones.groupby("sample_id")["count"].sum().sort_values()
 if len(sample_totals) >= 3:
+    # 10th percentile keeps approximately 90% of samples while limiting depth bias.
     rarefaction_depth = int(max(1, np.floor(np.quantile(sample_totals, 0.10))))
 else:
     rarefaction_depth = int(max(1, sample_totals.min()))
@@ -158,7 +178,7 @@ rng = np.random.default_rng(SEED)
 diversity_rows = []
 for sample_id, sdf in clones.groupby("sample_id"):
     raw_counts = sdf["count"].to_numpy(dtype=float)
-    total = int(raw_counts.sum())
+    total = int(np.rint(raw_counts.sum()))
     rare = rarefy_counts(raw_counts, rarefaction_depth, rng)
     if rare is None:
         richness = np.nan
@@ -169,10 +189,12 @@ for sample_id, sdf in clones.groupby("sample_id"):
         richness = int((rare > 0).sum())
         shannon = shannon_from_counts(rare)
         hill_q1 = float(np.exp(shannon)) if np.isfinite(shannon) else np.nan
-        rarefied_top10_fraction = float(np.sort(rare)[::-1][:10].sum() / rare.sum()) if rare.sum() > 0 else np.nan
+        rarefied_top10_fraction = (
+            float(np.sort(rare)[::-1][:10].sum() / rare.sum()) if rare.sum() > 0 else np.nan
+        )
 
     sorted_counts = np.sort(raw_counts)[::-1]
-    top10_fraction = float(sorted_counts[:10].sum() / total) if total > 0 else np.nan
+    top10_fraction = float(sorted_counts[:10].sum() / raw_counts.sum()) if raw_counts.sum() > 0 else np.nan
     meta = sdf.iloc[0]
     diversity_rows.append({
         "sample_id": sample_id,
@@ -183,7 +205,7 @@ for sample_id, sdf in clones.groupby("sample_id"):
         "disease_status": meta.disease_status,
         "is_control": bool(meta.is_control),
         "productive_trb_reads": total,
-        "raw_richness": int(len(sdf)),
+        "raw_richness": int(sdf["cdr3aa"].nunique()),
         "rarefaction_depth": rarefaction_depth,
         "included_in_rarefaction": bool(total >= rarefaction_depth),
         "rarefied_richness": richness,
@@ -196,4 +218,9 @@ for sample_id, sdf in clones.groupby("sample_id"):
 diversity = pd.DataFrame(diversity_rows)
 diversity.to_csv(RESULTS / "diversity_metrics.csv", index=False)
 print("Common rarefaction depth:", rarefaction_depth)
-print("Samples retained for normalized diversity:", int(diversity.included_in_rarefaction.sum()), "/", len(diversity))
+print(
+    "Samples retained for normalized diversity:",
+    int(diversity.included_in_rarefaction.sum()),
+    "/",
+    len(diversity),
+)
