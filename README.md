@@ -14,7 +14,7 @@ The implementation stays intentionally simple: MiXCR preprocessing, two notebook
 
 ## Patient identity and time points
 
-The first integer in a study-table record is the sequencing-library index. The biological patient ID is the complete code after that index and before the final time-point suffix.
+For the new cohort, the first integer in a study-table record is the sequencing-library index. The biological patient ID is the complete code after that index and before the final time-point suffix.
 
 ```text
 15_CA1_013.1
@@ -37,7 +37,28 @@ New FASTQ directory:
 
 A complete new library must contain all four paired lanes L001-L004. The preprocessing step writes `results/fastq_audit.csv` and stops a full run if an included sample is incomplete.
 
-The old UDP0097-UDP0112 cohort is also required for the complete analysis, following the colleague rule that old non-CGIMU samples are cases assigned to analysis time point 1 and UDP0106-UDP0112 are controls. UDP0108 is processed for QC but remains excluded from biological inference. `run_all_from_scratch.sh` tries to locate `pe150_res` automatically and stops if the old cohort cannot be found.
+Legacy FASTQ directory:
+
+```text
+/projects/mice_transplant_2025/measles/raw/pe150_res
+```
+
+The old files are paired as `_1.fq.gz` and `_2.fq.gz`, for example:
+
+```text
+FT150008642_56_L01_UDP0112_1.fq.gz
+FT150008642_56_L01_UDP0112_2.fq.gz
+```
+
+The study owner clarified the old-cohort interpretation:
+
+1. UDP0097-UDP0105 are adult measles cases and are assigned to analysis time point 1;
+2. UDP0106-UDP0112 are healthy adult controls;
+3. every legacy UDP library represents a different adult person;
+4. legacy UDP identities are independent from all new-cohort patient codes and are never joined longitudinally to them;
+5. UDP0108 is processed for the historical UDP0107/UDP0108 QC comparison but remains excluded from biological inference.
+
+The complete analysis requires both cohorts. `run_all_from_scratch.sh` locates `pe150_res` automatically and stops if required input files are missing.
 
 ## One-shot run from scratch
 
@@ -51,7 +72,7 @@ The bootstrap script creates or updates the pinned conda environment, validates 
 
 ## Patient-level outputs
 
-For every patient with at least two time points:
+For every new-cohort patient with at least two time points:
 
 ```text
 figures/patients/<PATIENT>_aav_venn.png/pdf
@@ -113,6 +134,7 @@ Read downsampling is performed without replacement with seed `1031`.
 
 ```text
 config/sample_manifest.csv                 source metadata
+config/SOURCE_NOTES.md                     explicit cohort rules
 notebooks/00_prepare_and_mixcr.ipynb       small preprocessing notebook
 notebooks/01_measles_analysis.ipynb        patient and group analyses
 scripts/preprocess_human_trb.py            FASTQ validation + MiXCR
