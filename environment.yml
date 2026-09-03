@@ -10,6 +10,7 @@ dependencies:
   - numpy
   - scipy
   - matplotlib
+  - matplotlib-venn
   - seaborn
   - statsmodels
   - scikit-learn
