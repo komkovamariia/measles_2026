@@ -19,10 +19,11 @@ required = [
     "README.md", "RUN_GUIDE.md", "environment.yml", "config/sample_manifest.csv",
     "config/metadata_known_issues.csv", "config/SOURCE_NOTES.md",
     "notebooks/00_prepare_and_mixcr.ipynb", "notebooks/01_measles_analysis.ipynb",
-    "scripts/preprocess_human_trb.py", "scripts/analysis_01_prepare.py",
-    "scripts/analysis_02_antigens.py", "scripts/analysis_03_figures.py",
-    "scripts/analysis_04_stats.py", "scripts/analysis_05_longitudinal_venn.py",
-    "scripts/run_pipeline.py", "scripts/run_slurm.sh", "run_all_from_scratch.sh",
+    "scripts/preprocess_human_trb.py", "scripts/mixcr_smoke_test.py",
+    "scripts/analysis_01_prepare.py", "scripts/analysis_02_antigens.py",
+    "scripts/analysis_03_figures.py", "scripts/analysis_04_stats.py",
+    "scripts/analysis_05_longitudinal_venn.py", "scripts/run_pipeline.py",
+    "scripts/run_slurm.sh", "run_all_from_scratch.sh",
 ]
 missing = [p for p in required if not (ROOT / p).exists()]
 if missing:
@@ -71,8 +72,6 @@ observed_new_controls = set(new.loc[new.is_control.astype(str).str.lower().isin(
 if observed_new_controls != expected_new_controls:
     fail(f"new control mapping changed: {sorted(observed_new_controls)}")
 
-# Corrected legacy rules supplied by the study owner:
-# all 16 old libraries are distinct adults and must not be linked to new patient IDs.
 legacy = legacy.set_index("sequencing_index")
 if set(legacy["age_group"].astype(str)) != {"adult"}:
     fail("all legacy UDP0097-UDP0112 samples must be adults")
@@ -97,14 +96,24 @@ if str(legacy.loc["UDP0108", "include"]).lower() not in {"false", "0"}:
     fail("UDP0108 must remain excluded from biological inference")
 
 env = (ROOT / "environment.yml").read_text(encoding="utf-8")
-for token in ["milaboratories", "mixcr=4.7.0", "matplotlib-venn=1.1", "python=3.12.13"]:
+for token in ["matplotlib-venn=1.1", "python=3.12.13"]:
     if token not in env:
         fail(f"environment missing reproducibility token: {token}")
+if "mixcr=" in env.lower() or "milaboratories" in env.lower():
+    fail("MiXCR must stay external to conda, matching the working mouse-project setup")
 
 prep = (ROOT / "scripts/preprocess_human_trb.py").read_text(encoding="utf-8")
-for token in ["EXPECTED_NEW_LANES", "--force-overwrite", "fastq_audit.csv", "_1.fq.gz", "UDP0107"]:
+for token in [
+    "EXPECTED_NEW_LANES", "~/soft/mixcr/mixcr", "-Xmx", "\"-f\"",
+    "--threads", "fastq_audit.csv", "_1.fq.gz", "UDP0107", "L{{n}}",
+]:
     if token not in prep:
         fail(f"preprocessing contract missing token: {token}")
+
+smoke = (ROOT / "scripts/mixcr_smoke_test.py").read_text(encoding="utf-8")
+for token in ["--limit-input", "~/soft/mixcr/mixcr", "-Xmx4g", "MiXCR smoke test passed"]:
+    if token not in smoke:
+        fail(f"MiXCR smoke-test contract missing token: {token}")
 
 analysis = (ROOT / "scripts/analysis_01_prepare.py").read_text(encoding="utf-8")
 for token in ["analysis_timepoint", "multivariate_hypergeometric", "source_patient_id"]:
