@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
-mkdir -p logs results figures audit_runs resources
+mkdir -p logs results figures audit_runs resources work
 
 if command -v conda >/dev/null 2>&1; then
   eval "$(conda shell.bash hook)"
@@ -27,32 +27,35 @@ fi
 conda activate "$ENV_NAME"
 
 export MEASLES_NEW_FASTQ_DIR="${MEASLES_NEW_FASTQ_DIR:-/projects/mice_transplant_2025/raw/20260817_161454/Fastq}"
+export MEASLES_LEGACY_FASTQ_DIR="${MEASLES_LEGACY_FASTQ_DIR:-/projects/mice_transplant_2025/measles/raw/pe150_res}"
+
 if [[ ! -d "$MEASLES_NEW_FASTQ_DIR" ]]; then
   echo "ERROR: new FASTQ directory does not exist: $MEASLES_NEW_FASTQ_DIR" >&2
   exit 1
 fi
-
-if [[ -z "${MEASLES_LEGACY_FASTQ_DIR:-}" ]]; then
-  legacy_named="$(find /projects/mice_transplant_2025 -type d -name 'pe150_res' -print -quit 2>/dev/null || true)"
-  if [[ -n "$legacy_named" ]]; then
-    export MEASLES_LEGACY_FASTQ_DIR="$legacy_named"
-  else
-    legacy_probe="$(find /projects/mice_transplant_2025 -type f -name '*UDP0107*R1*.fastq.gz' -print -quit 2>/dev/null || true)"
-    if [[ -n "$legacy_probe" ]]; then
-      export MEASLES_LEGACY_FASTQ_DIR="$(dirname "$legacy_probe")"
-    fi
-  fi
-fi
-if [[ -z "${MEASLES_LEGACY_FASTQ_DIR:-}" || ! -d "$MEASLES_LEGACY_FASTQ_DIR" ]]; then
-  echo "ERROR: old UDP0097-UDP0112 / pe150_res FASTQ directory was not found." >&2
+if [[ ! -d "$MEASLES_LEGACY_FASTQ_DIR" ]]; then
+  echo "ERROR: legacy FASTQ directory does not exist: $MEASLES_LEGACY_FASTQ_DIR" >&2
   exit 1
+fi
+
+# Match the working mice project: prefer the user's existing standalone MiXCR.
+if [[ -z "${MEASLES_MIXCR_BIN:-}" ]]; then
+  if [[ -x "$HOME/soft/mixcr/mixcr" ]]; then
+    export MEASLES_MIXCR_BIN="$HOME/soft/mixcr/mixcr"
+  elif command -v mixcr >/dev/null 2>&1; then
+    export MEASLES_MIXCR_BIN="$(command -v mixcr)"
+  else
+    echo "ERROR: MiXCR not found. Expected $HOME/soft/mixcr/mixcr." >&2
+    exit 1
+  fi
 fi
 
 echo "New FASTQ:    $MEASLES_NEW_FASTQ_DIR"
 echo "Legacy FASTQ: $MEASLES_LEGACY_FASTQ_DIR"
-
-mixcr -v > results/bootstrap_mixcr_version.txt 2>&1
+echo "MiXCR binary: $MEASLES_MIXCR_BIN"
+"$MEASLES_MIXCR_BIN" -v > results/bootstrap_mixcr_version.txt 2>&1
 head -n 1 results/bootstrap_mixcr_version.txt
+
 python scripts/validate_repository.py
 
 python - <<'PY'
