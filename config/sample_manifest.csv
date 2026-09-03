@@ -95,19 +95,19 @@ new_108,108,new,108_УМ1_075.1,УМ1_075,1.0,1.0,measles,unknown,False,True,,10
 new_109,109,new,109_РС1_076.1,РС1_076,1.0,1.0,measles,unknown,False,True,,109
 new_110,110,new,110_БМ1_074.2,БМ1_074,2.0,2.0,measles,unknown,False,True,,110
 new_111,111,new,111_БА1_071.2а,БА1_071,2.0,2.0,measles,unknown,False,True,,111
-legacy_UDP0097,UDP0097,legacy,МР1_001.1,МР1_001,1.0,1.0,measles,child,False,True,,UDP0097
-legacy_UDP0098,UDP0098,legacy,БА1_002.1,БА1_002,1.0,1.0,measles,child,False,True,,UDP0098
-legacy_UDP0099,UDP0099,legacy,ГА1_003.1,ГА1_003,1.0,1.0,measles,child,False,True,,UDP0099
-legacy_UDP0100,UDP0100,legacy,ХИ1_004.1,ХИ1_004,1.0,1.0,measles,child,False,True,,UDP0100
-legacy_UDP0101,UDP0101,legacy,ИМ1_005.1,ИМ1_005,1.0,1.0,measles,child,False,True,,UDP0101
-legacy_UDP0102,UDP0102,legacy,ПИ1_006.1,ПИ1_006,1.0,1.0,measles,adult,False,True,,UDP0102
-legacy_UDP0103,UDP0103,legacy,СС1_007.1,СС1_007,1.0,1.0,measles,child,False,True,,UDP0103
-legacy_UDP0104,UDP0104,legacy,ХИ1_004.2,ХИ1_004,2.0,1.0,measles,child,False,True,,UDP0104
-legacy_UDP0105,UDP0105,legacy,ШЕ1_008.1,ШЕ1_008,1.0,1.0,measles,child,False,True,,UDP0105
-legacy_UDP0106,UDP0106,legacy,CGIMU_N1,CGIMU_N1,,,healthy,adult,True,True,,UDP0106
-legacy_UDP0107,UDP0107,legacy,CGIMU_N2,CGIMU_N2,,,healthy,adult,True,True,,UDP0107
-legacy_UDP0108,UDP0108,legacy,CGIMU_N3,CGIMU_N3,,,healthy,adult,True,False,Previously excluded: unusually high similarity to UDP0107 and substantially lower depth,UDP0108
-legacy_UDP0109,UDP0109,legacy,CGIMU_N4,CGIMU_N4,,,healthy,adult,True,True,,UDP0109
-legacy_UDP0110,UDP0110,legacy,CGIMU_N5,CGIMU_N5,,,healthy,adult,True,True,,UDP0110
-legacy_UDP0111,UDP0111,legacy,CGIMU_N6,CGIMU_N6,,,healthy,adult,True,True,,UDP0111
-legacy_UDP0112,UDP0112,legacy,CGIMU_N7,CGIMU_N7,,,healthy,adult,True,True,,UDP0112
+legacy_UDP0097,UDP0097,legacy,UDP0097,UDP0097,1.0,1.0,measles,adult,False,True,,UDP0097
+legacy_UDP0098,UDP0098,legacy,UDP0098,UDP0098,1.0,1.0,measles,adult,False,True,,UDP0098
+legacy_UDP0099,UDP0099,legacy,UDP0099,UDP0099,1.0,1.0,measles,adult,False,True,,UDP0099
+legacy_UDP0100,UDP0100,legacy,UDP0100,UDP0100,1.0,1.0,measles,adult,False,True,,UDP0100
+legacy_UDP0101,UDP0101,legacy,UDP0101,UDP0101,1.0,1.0,measles,adult,False,True,,UDP0101
+legacy_UDP0102,UDP0102,legacy,UDP0102,UDP0102,1.0,1.0,measles,adult,False,True,,UDP0102
+legacy_UDP0103,UDP0103,legacy,UDP0103,UDP0103,1.0,1.0,measles,adult,False,True,,UDP0103
+legacy_UDP0104,UDP0104,legacy,UDP0104,UDP0104,1.0,1.0,measles,adult,False,True,,UDP0104
+legacy_UDP0105,UDP0105,legacy,UDP0105,UDP0105,1.0,1.0,measles,adult,False,True,,UDP0105
+legacy_UDP0106,UDP0106,legacy,CGIMU_N1,UDP0106,,,healthy,adult,True,True,,UDP0106
+legacy_UDP0107,UDP0107,legacy,CGIMU_N2,UDP0107,,,healthy,adult,True,True,,UDP0107
+legacy_UDP0108,UDP0108,legacy,CGIMU_N3,UDP0108,,,healthy,adult,True,False,Previously excluded: unusually high similarity to UDP0107 and substantially lower depth,UDP0108
+legacy_UDP0109,UDP0109,legacy,CGIMU_N4,UDP0109,,,healthy,adult,True,True,,UDP0109
+legacy_UDP0110,UDP0110,legacy,CGIMU_N5,UDP0110,,,healthy,adult,True,True,,UDP0110
+legacy_UDP0111,UDP0111,legacy,CGIMU_N6,UDP0111,,,healthy,adult,True,True,,UDP0111
+legacy_UDP0112,UDP0112,legacy,CGIMU_N7,UDP0112,,,healthy,adult,True,True,,UDP0112
