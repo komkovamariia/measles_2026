@@ -9,7 +9,10 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Slurm executes a copied job script from its spool directory, so $0 does not
+# point to the repository. SLURM_SUBMIT_DIR is the directory from which sbatch
+# was called and is therefore the correct repository root for this project.
+ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "$ROOT"
 mkdir -p logs results figures audit_runs
 export MPLBACKEND=Agg
@@ -47,6 +50,7 @@ if [[ -z "${MEASLES_LEGACY_FASTQ_DIR:-}" || ! -d "$MEASLES_LEGACY_FASTQ_DIR" ]];
   exit 1
 fi
 
+echo "Repository root: $ROOT"
 echo "New FASTQ:    $MEASLES_NEW_FASTQ_DIR"
 echo "Legacy FASTQ: $MEASLES_LEGACY_FASTQ_DIR"
 mixcr -v > results/slurm_mixcr_version.txt 2>&1
