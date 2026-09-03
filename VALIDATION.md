@@ -1,16 +1,23 @@
 # Validation notes
 
-The original minimal project was checked locally with notebook schema validation, Python compilation and a mocked MiXCR run.
+The repository follows the same practical reproducibility ideas used in `mice_transplant_2025`, while keeping the measles workflow much smaller.
 
-The current version additionally includes patient-level CDR3β Venn diagrams, TRBV read-fraction change tables and group-level TRBV statistics. These additions are wired into `notebooks/01_measles_analysis.ipynb` and run automatically with `--stage analysis` or `--stage all`.
+Before Slurm submission, `scripts/validate_repository.py` checks:
 
-Real biological results still require execution on the Aldan-3 FASTQ data.
+- all required source files;
+- clean JSON notebooks with unique cell IDs;
+- Python syntax of every script;
+- exactly 96 new study-table records and 16 legacy UDP records;
+- full patient identifiers, including the distinction between `СА1_013` and `СА1_017`;
+- sequencing-index and `.1/.2/.3` timepoint consistency;
+- the new healthy-control mapping;
+- legacy UDP0097-UDP0105 case and UDP0106-UDP0112 control rules;
+- UDP0108 exclusion from biological inference;
+- pinned Python/MiXCR/matplotlib-venn environment;
+- required preprocessing and longitudinal-analysis logic.
 
-Recommended order:
+During the real run, preprocessing additionally checks the filesystem. Every new included sample must have four complete R1/R2 lane pairs L001-L004. Every included legacy sample must be found. A full run stops on missing input instead of producing a partial result set.
 
-1. `git pull`
-2. update/activate the conda environment
-3. run the pilot
-4. inspect MiXCR exports and metadata mapping
-5. submit the full Slurm run
-6. inspect `results/longitudinal/` and `figures/patients/`
+After notebook execution, the runner verifies the required result tables, figures 01-10 and patient aaV Venn outputs.
+
+The final remaining external prerequisites are the real Aldan-3 FASTQ files, the correct old `pe150_res` location and a valid MiXCR license for the user account.
