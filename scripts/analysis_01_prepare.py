@@ -1,5 +1,5 @@
 from pathlib import Path
-import os, math, warnings
+import os, warnings
 
 import numpy as np
 import pandas as pd
@@ -31,6 +31,22 @@ for col in ["include", "is_control", "fastq_ready"]:
 
 manifest["analysis_timepoint"] = pd.to_numeric(manifest["analysis_timepoint"], errors="coerce")
 
+# In the study naming scheme the first integer is the sequencing-run index,
+# the last .1/.2/.3 is the time point, and the letter code identifies the patient.
+# Example: 10_PM1_009.1 and 12_PM1_009.2 -> the same patient PM1.
+# CGIMU controls are independent people, therefore their full IDs are retained.
+def canonical_patient(value):
+    text = str(value).strip()
+    if text.startswith("CGIMU_"):
+        return text
+    return text.split("_")[0]
+
+manifest["source_patient_id"] = manifest["patient_id"].astype(str)
+manifest["patient_id"] = manifest["source_patient_id"].map(canonical_patient)
+manifest[["library_id", "source_patient_id", "patient_id", "analysis_timepoint", "age_group", "disease_status"]].to_csv(
+    RESULTS / "patient_id_mapping.csv", index=False
+)
+
 def stage_from_row(row):
     if bool(row["is_control"]):
         return "healthy"
@@ -44,7 +60,7 @@ def stage_from_row(row):
     return "unknown"
 
 manifest["stage"] = manifest.apply(stage_from_row, axis=1)
-manifest[["library_id","patient_id","age_group","stage","batch","include"]].head()
+manifest[["library_id", "patient_id", "age_group", "stage", "batch", "include"]].head()
 
 def pick_col(df, candidates):
     for c in candidates:
@@ -81,10 +97,13 @@ for r in selected_manifest.itertuples(index=False):
     small = pd.DataFrame({
         "library_id": r.library_id,
         "patient_id": r.patient_id,
+        "source_patient_id": r.source_patient_id,
         "age_group": r.age_group,
         "stage": r.stage,
         "analysis_timepoint": r.analysis_timepoint,
         "batch": r.batch,
+        "disease_status": r.disease_status,
+        "is_control": bool(r.is_control),
         "cdr3aa": df[aa_col].astype(str),
         "count": pd.to_numeric(df[count_col], errors="coerce").fillna(0),
         "v_gene": df[v_col].map(clean_gene) if v_col else np.nan,
@@ -97,13 +116,14 @@ if not rows:
     raise RuntimeError("No MiXCR TRB export tables were found. Run notebook 00 first.")
 
 library_clones = pd.concat(rows, ignore_index=True)
+library_clones.to_csv(RESULTS / "library_trb_clonotypes.csv", index=False)
 
-# Sum technical libraries that resolve to one biological patient/timepoint.
-# V/J are taken from the highest-count observation of a CDR3 when technical calls disagree.
+# Sum technical libraries that resolve to one biological patient/time point.
+# V/J and metadata are taken from the highest-count observation when calls disagree.
 best_annotation = (
     library_clones.sort_values("count", ascending=False)
     .drop_duplicates(["patient_id", "stage", "cdr3aa"])
-    [["patient_id", "stage", "cdr3aa", "v_gene", "j_gene", "age_group", "analysis_timepoint"]]
+    [["patient_id", "stage", "cdr3aa", "v_gene", "j_gene", "age_group", "analysis_timepoint", "disease_status", "is_control"]]
 )
 counts = (
     library_clones.groupby(["patient_id", "stage", "cdr3aa"], as_index=False)["count"].sum()
@@ -113,6 +133,7 @@ clones["sample_id"] = clones["patient_id"].astype(str) + "__" + clones["stage"].
 
 clones.to_csv(RESULTS / "combined_trb_clonotypes.csv", index=False)
 print("Biological samples:", clones["sample_id"].nunique())
+print("Canonical patients:", clones["patient_id"].nunique())
 print("Unique CDR3β rows:", len(clones))
 
 def shannon_from_counts(counts):
@@ -163,6 +184,8 @@ for sample_id, sdf in clones.groupby("sample_id"):
         "age_group": meta.age_group,
         "stage": meta.stage,
         "analysis_timepoint": meta.analysis_timepoint,
+        "disease_status": meta.disease_status,
+        "is_control": bool(meta.is_control),
         "productive_trb_reads": total,
         "raw_richness": int(len(sdf)),
         "rarefaction_depth": rarefaction_depth,
