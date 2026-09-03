@@ -99,16 +99,33 @@ def discover_new(index) -> tuple[list[tuple[Path, Path]], list[str]]:
 
 
 def discover_legacy(key) -> list[tuple[Path, Path]]:
+    """Find old paired files such as FT..._L01_UDP0112_1.fq.gz/_2.fq.gz."""
     if LEGACY_DIR is None or not LEGACY_DIR.exists():
         return []
-    r1 = sorted(LEGACY_DIR.rglob(f"*{key}*R1*.fastq.gz"))
+
+    read1_candidates: set[Path] = set()
+    patterns = [
+        f"*{key}*_1.fq.gz",
+        f"*{key}*_1.fastq.gz",
+        f"*{key}*_R1*.fq.gz",
+        f"*{key}*_R1*.fastq.gz",
+    ]
+    for pattern in patterns:
+        read1_candidates.update(LEGACY_DIR.rglob(pattern))
+
     pairs = []
-    for p1 in r1:
-        candidates = [
-            Path(str(p1).replace("_R1_", "_R2_")),
-            Path(str(p1).replace("R1", "R2")),
-        ]
-        p2 = next((x for x in candidates if x.exists()), None)
+    for p1 in sorted(read1_candidates):
+        s = str(p1)
+        candidate_strings = []
+        if s.endswith("_1.fq.gz"):
+            candidate_strings.append(s[:-8] + "_2.fq.gz")
+        if s.endswith("_1.fastq.gz"):
+            candidate_strings.append(s[:-11] + "_2.fastq.gz")
+        candidate_strings.extend([
+            s.replace("_R1_", "_R2_"),
+            s.replace("R1", "R2"),
+        ])
+        p2 = next((Path(x) for x in candidate_strings if x != s and Path(x).exists()), None)
         if p2 is not None:
             pairs.append((p1, p2))
     return pairs
@@ -152,7 +169,7 @@ for _, r in manifest.iterrows():
             "sequencing_index": r.sequencing_index,
             "batch": "legacy",
             "n_complete_pairs": len(pairs),
-            "missing": "" if ready else "legacy_R1_R2_pair",
+            "missing": "" if ready else "legacy_read1_read2_pair",
             "fastq_ready": ready,
         })
         if not ready:
@@ -160,7 +177,7 @@ for _, r in manifest.iterrows():
                 "library_id": r.library_id,
                 "raw_sample_id": r.raw_sample_id,
                 "issue": "missing_legacy_fastq",
-                "note": "No complete R1/R2 FASTQ pair was found in MEASLES_LEGACY_FASTQ_DIR.",
+                "note": "No complete old _1/_2 or R1/R2 pair was found in MEASLES_LEGACY_FASTQ_DIR.",
             })
 
     if ready:
