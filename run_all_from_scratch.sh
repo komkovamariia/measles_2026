@@ -38,18 +38,22 @@ if [[ ! -d "$MEASLES_LEGACY_FASTQ_DIR" ]]; then
   exit 1
 fi
 
-# Match the working mice project: prefer the user's existing standalone MiXCR.
+# MiXCR is part of this project's conda environment. The historical mouse
+# analysis normally reused existing MiXCR exports, so it did not need to install
+# MiXCR in its analysis environment. Here we preprocess raw FASTQ from scratch.
 if [[ -z "${MEASLES_MIXCR_BIN:-}" ]]; then
-  if [[ -x "$HOME/soft/mixcr/mixcr" ]]; then
-    export MEASLES_MIXCR_BIN="$HOME/soft/mixcr/mixcr"
-  elif command -v mixcr >/dev/null 2>&1; then
+  if command -v mixcr >/dev/null 2>&1; then
     export MEASLES_MIXCR_BIN="$(command -v mixcr)"
+  elif [[ -x "$HOME/soft/mixcr/mixcr" ]]; then
+    export MEASLES_MIXCR_BIN="$HOME/soft/mixcr/mixcr"
   else
-    echo "ERROR: MiXCR not found. Expected $HOME/soft/mixcr/mixcr." >&2
+    echo "ERROR: MiXCR not found after activating $ENV_NAME." >&2
     exit 1
   fi
 fi
 
+echo "Conda environment: ${CONDA_DEFAULT_ENV:-unknown}"
+echo "Python: $(command -v python)"
 echo "New FASTQ:    $MEASLES_NEW_FASTQ_DIR"
 echo "Legacy FASTQ: $MEASLES_LEGACY_FASTQ_DIR"
 echo "MiXCR binary: $MEASLES_MIXCR_BIN"
