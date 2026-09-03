@@ -31,16 +31,16 @@ export MEASLES_LEGACY_FASTQ_DIR="${MEASLES_LEGACY_FASTQ_DIR:-/projects/mice_tran
 export MEASLES_REQUIRE_ALL_INPUTS=1
 export MEASLES_MIXCR_MEMORY_GB="${MEASLES_MIXCR_MEMORY_GB:-8}"
 
-# The working mouse project did not use a conda MiXCR package. Its
-# presenting_repseq.ipynb called ~/soft/mixcr/mixcr explicitly. Reuse that
-# executable first so we inherit the already working installation/license.
+# The active mouse analysis normally consumed already generated MiXCR exports.
+# For this fresh-start human project MiXCR is installed in the project conda
+# environment so the raw FASTQ preprocessing is reproducible on this account.
 if [[ -z "${MEASLES_MIXCR_BIN:-}" ]]; then
-  if [[ -x "$HOME/soft/mixcr/mixcr" ]]; then
-    export MEASLES_MIXCR_BIN="$HOME/soft/mixcr/mixcr"
-  elif command -v mixcr >/dev/null 2>&1; then
+  if command -v mixcr >/dev/null 2>&1; then
     export MEASLES_MIXCR_BIN="$(command -v mixcr)"
+  elif [[ -x "$HOME/soft/mixcr/mixcr" ]]; then
+    export MEASLES_MIXCR_BIN="$HOME/soft/mixcr/mixcr"
   else
-    echo "ERROR: MiXCR was not found. Expected $HOME/soft/mixcr/mixcr." >&2
+    echo "ERROR: MiXCR was not found after activating measles-tcr-2026." >&2
     exit 1
   fi
 fi
@@ -55,6 +55,8 @@ if [[ ! -d "$MEASLES_LEGACY_FASTQ_DIR" ]]; then
 fi
 
 echo "Repository root: $ROOT"
+echo "Conda environment: ${CONDA_DEFAULT_ENV:-unknown}"
+echo "Python: $(command -v python)"
 echo "New FASTQ:    $MEASLES_NEW_FASTQ_DIR"
 echo "Legacy FASTQ: $MEASLES_LEGACY_FASTQ_DIR"
 echo "MiXCR binary: $MEASLES_MIXCR_BIN"
@@ -63,8 +65,8 @@ head -n 1 results/slurm_mixcr_version.txt
 
 python scripts/validate_repository.py
 
-# Fail fast on one tiny real subset before launching six MiXCR processes in
-# parallel. This catches license, preset and basic input problems immediately.
+# Test the same MiXCR executable and preset on a small real input before the
+# full parallel batch. If it fails, the log contains the actual MiXCR message.
 python scripts/mixcr_smoke_test.py
 
 python scripts/run_pipeline.py \
