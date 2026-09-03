@@ -3,6 +3,7 @@ name: measles-tcr-2026
 channels:
   - conda-forge
   - bioconda
+  - milaboratories
 
 dependencies:
   - python=3.12.13
@@ -20,3 +21,4 @@ dependencies:
   - nbclient
   - nbformat=5.10.4
   - pyyaml
+  - milaboratories::mixcr=4.7.0
