@@ -2,98 +2,144 @@
 
 A deliberately small Jupyter pipeline for the human measles TCR-beta project.
 
-It answers four questions:
+The workflow has five practical questions:
 
-1. Are measles-associated CDR3β clonotypes more frequent during acute measles?
-2. Are clonotypes associated with hepatitis B, poliovirus and tetanus less represented during acute measles?
-3. Is the TCRβ repertoire less diverse during measles?
-4. How do repertoire metrics change from admission to clinical recovery and later follow-up?
+1. Which exact CDR3β clonotypes are retained, lost or newly detected between time points of the same patient?
+2. Which TRBV genes disappear, appear, increase or decrease by their share of productive TRB reads?
+3. Are there recurrent TRBV changes across children/adults and healthy/acute measles groups?
+4. Are measles- and other infection-associated CDR3β clonotypes differently represented during measles?
+5. Does overall TCRβ repertoire diversity change during disease and recovery?
 
-The workflow is intentionally simple: MiXCR preprocessing, two notebooks, simple non-parametric statistics and exact CDR3β matches to the curated IEDB TCRMatch table.
+The implementation is intentionally simple: MiXCR preprocessing, two notebooks, exact Venn overlaps, TRBV read fractions and simple non-parametric statistics.
 
-## Get the project on Aldan-3
+## Patient identity and time points
 
-This project is stored in the private repository `komkovamariia/measles_2026`.
+For the new FASTQ batch:
 
-```bash
-cd ~
-git clone https://github.com/komkovamariia/measles_2026.git
-cd measles_2026
+```text
+10_S1_L001_R1_001.fastq.gz ... 10_S1_L004_R2_001.fastq.gz
 ```
+
+The integer before the first underscore is the sequencing library index.
+
+In the study table, records such as:
+
+```text
+10_PM1_009.1
+12_PM1_009.2
+```
+
+belong to the same patient because the letter code `PM1` is the patient identity. The final `.1`, `.2`, `.3` is the clinical time point. The intermediate numeric code is retained as source metadata but is not used to split one patient into different people.
+
+CGIMU controls are independent individuals and keep their complete IDs.
 
 ## Input data
 
-The new FASTQ batch defaults to the current server location:
+The new FASTQ batch defaults to:
 
 ```text
 /projects/mice_transplant_2025/raw/20260817_161454/Fastq
 ```
 
-Therefore it does not need to be supplied manually unless the files are moved.
+Legacy UDP0097-UDP0112 FASTQ files are optional and are used when `MEASLES_LEGACY_FASTQ_DIR` is set.
 
-Legacy UDP0097-UDP0112 FASTQ files are used when `MEASLES_LEGACY_FASTQ_DIR` is set. The Slurm script also tries to locate UDP0107 automatically under `/projects/mice_transplant_2025`.
-
-## Install once
+## Install and run
 
 ```bash
+git clone https://github.com/komkovamariia/measles_2026.git
+cd measles_2026
 conda env create -f environment.yml
 conda activate measles-tcr-2026
 ```
 
-## Recommended first run
-
-Pilot first:
+Pilot:
 
 ```bash
 python scripts/run_pipeline.py --stage all --pilot --cpus 8 --threads-per-sample 2
 ```
 
-Then submit the complete analysis:
+Full Aldan-3 run:
 
 ```bash
 sbatch scripts/run_slurm.sh
 ```
 
-Monitor with:
+## Main patient-level outputs
 
-```bash
-squeue -u "$USER"
-tail -f logs/slurm_JOBID.out
+For every patient with at least two time points the pipeline creates:
+
+```text
+figures/patients/<PATIENT>_cdr3_venn.png/pdf
+figures/patients/<PATIENT>_T1_to_T2_trbv_change.png/pdf
+figures/patients/<PATIENT>_T2_to_T3_trbv_change.png/pdf   # when available
+
+results/longitudinal/patients/<PATIENT>_T1_to_T2_trbv_changes.csv
+results/longitudinal/patients/<PATIENT>_T2_to_T3_trbv_changes.csv
 ```
 
-MiXCR libraries with an existing valid TRB export are skipped automatically.
+The Venn diagram compares exact amino-acid CDR3β clonotypes between time points.
+
+For every TRBV and patient transition the table contains:
+
+```text
+fraction_old
+fraction_new
+delta_fraction
+delta_percentage_points
+presence_change = gained / lost / persistent / absent_both
+direction = increased / decreased / unchanged
+```
+
+TRBV fraction is calculated as:
+
+```text
+reads assigned to TRBV / all productive TRB reads in the sample
+```
+
+An individual patient has one repertoire measurement per time point, so a patient-specific p-value is not statistically identifiable. Patient tables therefore report the observed effect. Statistical significance is tested across biological patients.
+
+## Group-level TRBV analysis
+
+Two simple comparisons are performed separately for adults and children:
+
+1. acute measles versus healthy controls: Mann-Whitney U on TRBV read fractions;
+2. paired time point 1 → 2 and 2 → 3: Wilcoxon signed-rank test on TRBV read fractions.
+
+Benjamini-Hochberg correction is applied across TRBV genes within each comparison.
+
+Main group outputs:
+
+```text
+results/longitudinal/trbv_group_statistics.csv
+figures/09_group_trbv_patterns.png/pdf
+figures/10_group_trbv_gain_loss.png/pdf
+```
+
+## Other retained analyses
+
+The previous simple analyses remain in the project:
+
+- normalized repertoire richness and Shannon diversity;
+- top-10 clonotype dominance;
+- TRBV/TRBJ usage heatmaps;
+- exact CDR3β matches to IEDB for measles, hepatitis B, poliovirus and tetanus;
+- longitudinal diversity trajectories.
 
 ## Project layout
 
 ```text
-config/sample_manifest.csv            sample metadata
-notebooks/00_prepare_and_mixcr.ipynb  FASTQ discovery, metadata QC and MiXCR
-notebooks/01_measles_analysis.ipynb   all four biological tasks
+config/sample_manifest.csv            source metadata
+notebooks/00_prepare_and_mixcr.ipynb  FASTQ discovery, QC and MiXCR
+notebooks/01_measles_analysis.ipynb   patient and group analyses
 scripts/run_pipeline.py               notebook runner
-scripts/run_slurm.sh                  one simple 24-CPU Slurm job
+scripts/run_slurm.sh                  one 24-CPU Slurm job
+scripts/analysis_05_longitudinal_venn.py  Venn + TRBV changes
 results/                              CSV tables
 figures/                              PNG and PDF figures
 audit_runs/                           executed notebooks
-logs/                                 run and MiXCR logs
+logs/                                 notebook and MiXCR logs
 ```
-
-## Main figures
-
-Exactly two result figures are created for each requested biological task:
-
-| Task | Figures |
-|---|---|
-| 1. Measles response | measles-specific CDR3β group comparison; top-10 clone dominance |
-| 2. Other infections | HBV/polio/tetanus group comparison; longitudinal recovery |
-| 3. Repertoire diversity | richness/Shannon comparison; V/J usage heatmaps |
-| 4. Recovery dynamics | paired richness; paired Shannon diversity |
-
-Adults and children are analysed separately when metadata permit it. If either comparison group contains fewer than three biological samples, the notebook shows the data descriptively and does not report a p-value.
 
 ## Interpretation limits
 
-The libraries are bulk TRB data from genomic-DNA multiplex sequencing. Read counts therefore provide a relative clonotype-abundance signal and are sensitive to multiplex-PCR amplification.
-
-The primary antigen analysis uses exact amino-acid CDR3β matches to experimentally curated IEDB records. Database matches are evidence for antigen association, while absence of a match cannot be interpreted as absence of immunity.
-
-Observed repertoire richness depends on sequencing depth, so the primary richness and Shannon comparison is performed after reproducible common-depth downsampling with seed `1031`.
+The libraries are bulk TRB data from genomic-DNA multiplex sequencing. Read counts provide a relative clonotype-abundance signal and are sensitive to multiplex-PCR amplification. For this reason TRBV changes are reported as fractions of productive TRB reads and clone diversity is also assessed after common-depth downsampling.
