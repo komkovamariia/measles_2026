@@ -1,136 +1,132 @@
 # Run guide
 
-## Patient identity rule
+## One unattended full run
 
-Use the complete biological code after the sequencing index and before `.1/.2/.3`.
-
-```text
-15_CA1_013.1
-19_CA1_013.2
-```
-
-are one patient `CA1_013`.
-
-```text
-22_CA1_017.1
-```
-
-is another patient `CA1_017`.
-
-Thus `CA1_013` and `CA1_017` are never merged. The first integer is the sequencing-library index. The final integer after the dot is the time point.
-
-## Run everything unattended from scratch
-
-The repository contains `run_all_from_scratch.sh`. It creates the conda environment on the first run, updates it on later runs, and immediately submits the complete Slurm analysis. It does not perform a pilot.
-
-From a server account where the repository has not yet been cloned, paste the following block once:
+On Aldan-3:
 
 ```bash
 cd ~
 if [ -d "$HOME/measles_2026/.git" ]; then
-    cd "$HOME/measles_2026"
-    git pull
+  cd "$HOME/measles_2026"
+  git pull --ff-only
 else
-    git clone https://github.com/komkovamariia/measles_2026.git "$HOME/measles_2026"
-    cd "$HOME/measles_2026"
+  git clone git@github.com:komkovamariia/measles_2026.git "$HOME/measles_2026"
+  cd "$HOME/measles_2026"
 fi
-mkdir -p logs
+
 nohup bash run_all_from_scratch.sh > logs/bootstrap_submit.log 2>&1 &
+echo "bootstrap PID: $!"
 ```
 
-After the `nohup` command you can disconnect from SSH. Environment creation/update continues in the background. When it finishes, the script submits the complete computation through Slurm, so the heavy MiXCR analysis runs on the cluster allocation.
+`run_all_from_scratch.sh` performs the steps in sequence:
 
-The configured new-data path is:
+1. creates or updates `measles-tcr-2026` from `environment.yml`;
+2. checks MiXCR and runs `scripts/validate_repository.py`;
+3. verifies the new FASTQ directory;
+4. automatically searches for the old `pe150_res` / UDP0097-UDP0112 cohort;
+5. caches the IEDB TCRMatch reference before the compute job;
+6. submits `scripts/run_slurm.sh`.
+
+The full run intentionally stops if an included old or new library is missing. This prevents accidental analysis of a partial cohort.
+
+## Data
+
+New batch:
 
 ```text
 /projects/mice_transplant_2025/raw/20260817_161454/Fastq
 ```
 
-The full Slurm job requests 24 CPUs. MiXCR receives 4 threads per library, allowing up to 6 independent libraries to be processed simultaneously.
+Every new sequencing index must have exactly four paired lanes L001-L004. The first integer in the FASTQ name maps to `config/sample_manifest.csv`.
 
-If you later want to see what happened:
+Old cohort: UDP0097-UDP0112. The scripts first search for a directory named `pe150_res`, then for a FASTQ containing `UDP0107`. If automatic discovery fails, set the path before running:
 
 ```bash
-cd ~/measles_2026
+export MEASLES_LEGACY_FASTQ_DIR=/absolute/path/to/pe150_res
+```
+
+## Patient identity
+
+The complete biological code is the patient ID:
+
+```text
+15_СА1_013.1  -> patient СА1_013, time point 1
+19_СА1_013.2  -> patient СА1_013, time point 2
+22_СА1_017.1  -> patient СА1_017, time point 1
+```
+
+Therefore `СА1_013` and `СА1_017` are different people.
+
+## Slurm
+
+The submitted job requests 24 CPUs and 64 GB RAM. MiXCR receives 4 threads per library, so at most 6 independent libraries are processed simultaneously.
+
+Monitor:
+
+```bash
 cat logs/bootstrap_submit.log
 squeue -u "$USER"
+tail -f logs/slurm_JOBID.out
 ```
 
-Once the job ID is visible, the Slurm output is:
-
-```text
-logs/slurm_<JOBID>.out
-```
-
-## Manual alternative
-
-If the environment already exists and you only want to resubmit the complete calculation:
+After completion:
 
 ```bash
-cd ~/measles_2026
-git pull
-conda activate measles-tcr-2026
-sbatch scripts/run_slurm.sh
+sacct -j JOBID --format=JobID,State,Elapsed,AllocCPUS,TotalCPU,MaxRSS,ReqMem
 ```
 
-Existing non-empty MiXCR TRB exports are skipped automatically, so rerunning the Slurm job can continue an interrupted calculation.
+## Automatic validation
 
-## Main patient-level results
+Before analysis, `scripts/validate_repository.py` checks the required files, notebook structure, Python syntax, 96 new records, 16 legacy records, patient identity, timepoint parsing, control mapping, legacy case/control rules and pinned environment.
 
-Each patient with at least two time points receives a Venn diagram:
+During preprocessing, `scripts/preprocess_human_trb.py` checks actual FASTQ availability. New samples require all eight FASTQ files corresponding to four paired lanes. The audit is saved to:
 
 ```text
-figures/patients/<PATIENT>_cdr3_venn.png
-figures/patients/<PATIENT>_cdr3_venn.pdf
+results/fastq_audit.csv
+results/metadata_issues.csv
+results/sample_manifest_resolved.csv
 ```
 
-For two time points the plot is a 2-set Venn. For three time points it is a 3-set Venn. Sets contain exact CDR3β amino-acid clonotypes.
+After the complete pipeline, `scripts/run_pipeline.py` verifies the expected result tables, figures 01-10 and at least one patient aaV Venn figure.
 
-For each consecutive time-point transition the pipeline creates a TRBV read-share table and figure:
+## Patient results
+
+For each patient with at least two time points:
 
 ```text
-results/longitudinal/patients/<PATIENT>_T1_to_T2_trbv_changes.csv
+figures/patients/<PATIENT>_aav_venn.png/pdf
 figures/patients/<PATIENT>_T1_to_T2_trbv_change.png/pdf
+results/longitudinal/patients/<PATIENT>_T1_to_T2_trbv_changes.csv
 ```
 
-and, when available:
+When T3 exists, a T2→T3 TRBV table and figure are also created.
+
+The Venn feature is `aaV = (CDR3aa, TRBV)`, matching the mouse-project Venn definition. Numerical CDR3-only and aaV overlaps are saved in:
 
 ```text
-results/longitudinal/patients/<PATIENT>_T2_to_T3_trbv_changes.csv
-figures/patients/<PATIENT>_T2_to_T3_trbv_change.png/pdf
+results/longitudinal/patient_cdr3_overlap.csv
+results/longitudinal/patient_aav_overlap.csv
 ```
 
-Important columns are:
+TRBV change is based on:
 
 ```text
-trbv
-fraction_old
-fraction_new
-delta_percentage_points
-presence_change
-direction
+TRBV read fraction = reads assigned to a TRBV / all productive TRB reads in that sample
 ```
 
-`gained` means zero reads for that TRBV at the previous time point and non-zero reads at the new point. `lost` means the reverse. `persistent` means the TRBV is detected at both points.
-
-## Group statistics
-
-The statistical unit is a biological patient. Adults and children are analyzed separately.
-
-```text
-acute measles vs healthy control : Mann-Whitney U
-T1 vs T2 within the same patient : paired Wilcoxon
-T2 vs T3 within the same patient : paired Wilcoxon
-```
-
-The tested value is the fraction of all productive TRB reads assigned to each TRBV. Benjamini-Hochberg FDR correction is applied within each comparison.
-
-Main outputs:
+## Group results
 
 ```text
 results/longitudinal/trbv_group_statistics.csv
+results/longitudinal/trbv_top_patterns.csv
 figures/09_group_trbv_patterns.png/pdf
 figures/10_group_trbv_gain_loss.png/pdf
 ```
 
-Other retained outputs include repertoire diversity, antigen-associated CDR3β matches, V/J usage and longitudinal diversity plots.
+The analysis includes adult/child case-control comparisons, within-status adult/child comparisons, paired T1→T2 and T2→T3 changes, and age-group differences in longitudinal change where sample sizes permit statistical testing.
+
+Other retained results include diversity, top-clone dominance, V/J usage and exact IEDB matches for measles, hepatitis B, poliovirus and tetanus.
+
+## Important external requirement
+
+MiXCR requires a valid MiXCR license on the server. If the account has not previously activated MiXCR, activate the academic license once before leaving an unattended full run.
