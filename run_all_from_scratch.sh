@@ -32,7 +32,6 @@ if [[ ! -d "$MEASLES_NEW_FASTQ_DIR" ]]; then
   exit 1
 fi
 
-# Locate the required old cohort before submission.
 if [[ -z "${MEASLES_LEGACY_FASTQ_DIR:-}" ]]; then
   legacy_named="$(find /projects/mice_transplant_2025 -type d -name 'pe150_res' -print -quit 2>/dev/null || true)"
   if [[ -n "$legacy_named" ]]; then
@@ -52,11 +51,10 @@ fi
 echo "New FASTQ:    $MEASLES_NEW_FASTQ_DIR"
 echo "Legacy FASTQ: $MEASLES_LEGACY_FASTQ_DIR"
 
-mixcr -v | head -n 1
+mixcr -v > results/bootstrap_mixcr_version.txt 2>&1
+head -n 1 results/bootstrap_mixcr_version.txt
 python scripts/validate_repository.py
 
-# Cache the small IEDB TCRMatch reference on the login node so the compute job
-# does not depend on outbound web access for antigen annotation.
 python - <<'PY'
 from pathlib import Path
 import requests
@@ -69,7 +67,6 @@ if not p.exists() or p.stat().st_size < 100:
 print(f"IEDB reference ready: {p} ({p.stat().st_size} bytes)")
 PY
 
-# Exported variables are inherited by sbatch in the normal Slurm configuration.
 export MEASLES_REQUIRE_ALL_INPUTS=1
 JOB_ID="$(sbatch --parsable scripts/run_slurm.sh)"
 
