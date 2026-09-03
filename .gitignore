@@ -1,0 +1,24 @@
+# Raw data
+raw/
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+
+# MiXCR binary/intermediate files
+*.vdjca
+*.clns
+*.clna
+
+# Runtime/cache
+work/
+logs/*.log
+resources/IEDB_data.tsv
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+
+# Large generated MiXCR directories
+results/mixcr/
+
+# Keep small analysis tables and figures if desired
