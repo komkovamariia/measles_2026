@@ -105,7 +105,7 @@ if "mixcr=" in env.lower() or "milaboratories" in env.lower():
 prep = (ROOT / "scripts/preprocess_human_trb.py").read_text(encoding="utf-8")
 for token in [
     "EXPECTED_NEW_LANES", "~/soft/mixcr/mixcr", "-Xmx", "\"-f\"",
-    "--threads", "fastq_audit.csv", "_1.fq.gz", "UDP0107", "L{{n}}",
+    "--threads", "fastq_audit.csv", "_1.fq.gz", "UDP0107", "L{{{{n}}}}",
 ]:
     if token not in prep:
         fail(f"preprocessing contract missing token: {token}")
