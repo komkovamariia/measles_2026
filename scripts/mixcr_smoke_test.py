@@ -51,7 +51,6 @@ m = rx.match(first.name)
 idx = m.group("idx")
 sample_s = m.group("s")
 
-# Reproduce the full-run multi-lane input contract using four lightweight symlinks.
 for old in OUT_DIR.glob("smoke_L*_R*.fastq.gz"):
     old.unlink()
 for lane in ["001", "002", "003", "004"]:
@@ -71,8 +70,6 @@ r1_pattern = str(OUT_DIR / "smoke_L{{n}}_R1.fastq.gz")
 r2_pattern = str(OUT_DIR / "smoke_L{{n}}_R2.fastq.gz")
 prefix = OUT_DIR / "smoke"
 
-# Keep the command shape used by the historical presenting_repseq helper:
-# executable, JVM memory, analyze, preset, -f, input pair, output prefix.
 cmd = [
     mixcr,
     "-Xmx4g",
@@ -99,11 +96,26 @@ with LOG.open("w", encoding="utf-8") as log:
     proc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
 
 if proc.returncode != 0:
-    tail = LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-80:]
+    text = LOG.read_text(encoding="utf-8", errors="replace")
+    tail = text.splitlines()[-80:]
     print("\nMiXCR smoke test failed. Last log lines:\n" + "\n".join(tail))
+    low = text.lower()
+    if "license error" in low or "license manager" in low or "authorizationerror" in low:
+        hint = (
+            "Detected a MiXCR license problem. Activate or refresh the academic license "
+            "with `mixcr activate-license`, and ensure the compute node can reach the "
+            "MiXCR licensing service. The license may also be supplied as ~/mi.license, "
+            "~/.mi.license, MI_LICENSE or MI_LICENSE_FILE."
+        )
+    elif "preset" in low and ("unknown" in low or "not found" in low or "deprecated" in low):
+        hint = "Detected a preset problem. Verify MEASLES_MIXCR_PRESET against the wet-lab kit."
+    elif "no files" in low or "not found" in low or "file" in low and "does not exist" in low:
+        hint = "Detected an input-file problem. Check the four-lane expansion and symlinks."
+    else:
+        hint = f"Inspect the complete MiXCR log: {LOG}"
     raise RuntimeError(
-        f"MiXCR smoke test failed with exit code {proc.returncode}. "
-        f"See {LOG}. Full cohort processing was not started."
+        f"MiXCR smoke test failed with exit code {proc.returncode}. {hint} "
+        "Full cohort processing was not started."
     )
 
 if not list(OUT_DIR.glob("smoke*.clns")):
