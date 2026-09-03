@@ -23,11 +23,11 @@ echo "bootstrap PID: $!"
 1. creates or updates `measles-tcr-2026` from `environment.yml`;
 2. checks MiXCR and runs `scripts/validate_repository.py`;
 3. verifies the new FASTQ directory;
-4. automatically searches for the old `pe150_res` / UDP0097-UDP0112 cohort;
+4. locates the old `pe150_res` cohort;
 5. caches the IEDB TCRMatch reference before the compute job;
 6. submits `scripts/run_slurm.sh`.
 
-The full run intentionally stops if an included old or new library is missing. This prevents accidental analysis of a partial cohort.
+The full run stops if an included old or new library is missing. This prevents accidental analysis of a partial cohort.
 
 ## Data
 
@@ -39,15 +39,33 @@ New batch:
 
 Every new sequencing index must have exactly four paired lanes L001-L004. The first integer in the FASTQ name maps to `config/sample_manifest.csv`.
 
-Old cohort: UDP0097-UDP0112. The scripts first search for a directory named `pe150_res`, then for a FASTQ containing `UDP0107`. If automatic discovery fails, set the path before running:
+Legacy batch:
 
-```bash
-export MEASLES_LEGACY_FASTQ_DIR=/absolute/path/to/pe150_res
+```text
+/projects/mice_transplant_2025/measles/raw/pe150_res
 ```
+
+Old files use names such as:
+
+```text
+FT150008642_56_L01_UDP0112_1.fq.gz
+FT150008642_56_L01_UDP0112_2.fq.gz
+```
+
+The preprocessor supports this `_1.fq.gz` / `_2.fq.gz` pairing directly.
+
+Legacy biological rules are fixed:
+
+```text
+UDP0097-UDP0105 = adult measles cases, analysis time point 1
+UDP0106-UDP0112 = healthy adult controls
+```
+
+All 16 legacy UDP libraries are different adult people and are independent from all patients in the new cohort. They must never be joined longitudinally to new patient codes. UDP0108 is processed for QC but excluded from biological inference.
 
 ## Patient identity
 
-The complete biological code is the patient ID:
+For the new cohort, the complete biological code is the patient ID:
 
 ```text
 15_СА1_013.1  -> patient СА1_013, time point 1
@@ -56,6 +74,8 @@ The complete biological code is the patient ID:
 ```
 
 Therefore `СА1_013` and `СА1_017` are different people.
+
+Legacy patient identity is simply the independent UDP code itself, for example `UDP0097` or `UDP0112`.
 
 ## Slurm
 
@@ -77,9 +97,9 @@ sacct -j JOBID --format=JobID,State,Elapsed,AllocCPUS,TotalCPU,MaxRSS,ReqMem
 
 ## Automatic validation
 
-Before analysis, `scripts/validate_repository.py` checks the required files, notebook structure, Python syntax, 96 new records, 16 legacy records, patient identity, timepoint parsing, control mapping, legacy case/control rules and pinned environment.
+Before analysis, `scripts/validate_repository.py` checks the required files, notebook structure, Python syntax, 96 new records, 16 legacy records, patient identity, timepoint parsing, control mapping, corrected legacy adult case/control rules and pinned environment.
 
-During preprocessing, `scripts/preprocess_human_trb.py` checks actual FASTQ availability. New samples require all eight FASTQ files corresponding to four paired lanes. The audit is saved to:
+During preprocessing, `scripts/preprocess_human_trb.py` checks actual FASTQ availability. New samples require all eight FASTQ files corresponding to four paired lanes. Legacy samples require a valid paired old `_1/_2` or R1/R2 file pair. The audit is saved to:
 
 ```text
 results/fastq_audit.csv
@@ -91,7 +111,7 @@ After the complete pipeline, `scripts/run_pipeline.py` verifies the expected res
 
 ## Patient results
 
-For each patient with at least two time points:
+For each new-cohort patient with at least two time points:
 
 ```text
 figures/patients/<PATIENT>_aav_venn.png/pdf
