@@ -26,6 +26,7 @@ else
 fi
 conda activate measles-tcr-2026
 
+export MEASLES_REPO="$ROOT"
 export MEASLES_NEW_FASTQ_DIR="${MEASLES_NEW_FASTQ_DIR:-/projects/mice_transplant_2025/raw/20260817_161454/Fastq}"
 export MEASLES_LEGACY_FASTQ_DIR="${MEASLES_LEGACY_FASTQ_DIR:-/projects/mice_transplant_2025/measles/raw/pe150_res}"
 
@@ -35,29 +36,49 @@ echo "Age split: child < 6 years; adult >= 6 years"
 echo "Final biological QC: >= 5000 productive TRB clonotypes/library"
 echo "MiXCR will NOT be rerun."
 
+echo "Validating repository..."
 python scripts/validate_repository.py
 
 if [[ ! -s results/raw_fastq_depth.csv ]]; then
+  echo "Collecting raw FASTQ depth..."
   python scripts/collect_fastq_depth.py --workers "${SLURM_CPUS_PER_TASK:-8}"
 else
   echo "Reuse results/raw_fastq_depth.csv"
 fi
 
-# Rebuild notebook-derived biological tables and corrected metadata.
-python scripts/run_pipeline.py \
-  --stage analysis \
-  --cpus "${SLURM_CPUS_PER_TASK:-8}" \
-  --threads-per-sample 4
+# Remove only derived downstream outputs. MiXCR exports and clonotype TSVs are preserved.
+echo "Removing stale derived outputs..."
+rm -rf \
+  results/corrected \
+  results/corrected_age6 \
+  results/current \
+  figures/corrected \
+  figures/corrected_age6 \
+  figures/current
+mkdir -p results figures
 
-# Explicit final stage: this was missing from the earlier launcher path.
-echo "Running final QC-filtered reporting..."
+# IMPORTANT: run scripts as real Python files, not through notebook exec().
+# This guarantees that __file__ is defined and avoids the nbclient NameError
+# that previously stopped analysis_06_clinical_summary.py.
+echo "Running analysis_01_prepare.py..."
+python scripts/analysis_01_prepare.py
+
+echo "Running analysis_02_antigens.py..."
+python scripts/analysis_02_antigens.py
+
+echo "Running analysis_06_clinical_summary.py..."
+python scripts/analysis_06_clinical_summary.py
+
+echo "Running analysis_07_age6_reporting.py..."
+python scripts/analysis_07_age6_reporting.py
+
+echo "Running analysis_08_final_reporting.py..."
 python scripts/analysis_08_final_reporting.py
 
-# Publish authoritative final outputs into top-level figures/ for easy viewing.
 echo "Publishing final figures to top-level figures/..."
 python scripts/publish_current_figures.py
 
-# Fail loudly if the user-facing outputs were not actually refreshed.
+# Hard verification: fail if user-facing outputs were not actually recreated.
 for f in \
   figures/CURRENT_OUTPUTS.txt \
   figures/00_library_QC_overview.png \
