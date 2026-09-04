@@ -46,7 +46,6 @@ else
   echo "Reuse results/raw_fastq_depth.csv"
 fi
 
-# Remove derived downstream outputs. MiXCR exports and clonotype TSVs are preserved.
 echo "Removing stale derived outputs..."
 rm -rf \
   results/corrected \
@@ -54,10 +53,12 @@ rm -rf \
   results/current \
   figures/corrected \
   figures/corrected_age6 \
-  figures/current
+  figures/current \
+  figures/group \
+  figures/patients
+find figures -maxdepth 1 -type f \( -name '*.png' -o -name '*.pdf' -o -name 'CURRENT_OUTPUTS.txt' -o -name 'FIGURE_INDEX.txt' \) -delete
 mkdir -p results figures
 
-# Run scripts as real Python files so __file__ is always defined.
 echo "Running analysis_01_prepare.py..."
 python scripts/analysis_01_prepare.py
 
@@ -70,25 +71,23 @@ python scripts/analysis_06_clinical_summary.py
 echo "Running analysis_07_age6_reporting.py..."
 python scripts/analysis_07_age6_reporting.py
 
-echo "Running analysis_08_final_reporting.py..."
-python scripts/analysis_08_final_reporting.py
+echo "Running final reporting with read-only NumPy compatibility fix..."
+python scripts/analysis_08_final_reporting_safe.py
 
-# Replace older patient-level figures with the final clinician-facing composite panels.
 echo "Running analysis_09_patient_panels.py..."
 python scripts/analysis_09_patient_panels.py
 
-echo "Publishing final figures to top-level figures/..."
+echo "Publishing final figures into figures/group and figures/patients..."
 python scripts/publish_current_figures.py
 
-# Hard verification: fail if user-facing outputs were not actually recreated.
 for f in \
-  figures/CURRENT_OUTPUTS.txt \
-  figures/00_library_QC_overview.png \
-  figures/01_oligoclonality_case_control.png \
-  figures/05_T1_T2_richness.png \
-  figures/07_venn_and_weighted_similarity_summary.png \
-  figures/08_TRBV_usage_adult.png \
-  figures/09_TRBJ_usage_adult.png \
+  figures/FIGURE_INDEX.txt \
+  figures/group/00_library_QC_overview.png \
+  figures/group/01_oligoclonality_case_control.png \
+  figures/group/05_T1_T2_richness.png \
+  figures/group/07_venn_and_weighted_similarity_summary.png \
+  figures/group/08_TRBV_usage_adult.png \
+  figures/group/09_TRBJ_usage_adult.png \
   "figures/patients/СА1_013_repertoire_QC_and_overlap.png" \
   results/current/sample_metadata_current.csv \
   results/current/patient_panel_index.csv \
@@ -100,21 +99,15 @@ do
   fi
 done
 
-# The user-facing figures/ directory should contain only current published outputs.
-# Intermediate figure directories are deleted after successful publication.
 echo "Removing intermediate figure directories..."
 rm -rf figures/corrected figures/corrected_age6 figures/current
 
 echo
-echo "===== USER-FACING FIGURES ====="
+echo "===== FINAL FIGURE TREE ====="
 find figures -maxdepth 2 -type f -printf '%TY-%Tm-%Td %TH:%TM:%TS  %p\n' | sort
 
 echo
-echo "===== CA1_013 ====="
-ls -lh "figures/patients/СА1_013_repertoire_QC_and_overlap.png"
-
-echo
 echo "Refresh completed successfully."
-echo "Open: $ROOT/figures"
-echo "Only published current figures are retained in figures/."
-echo "Tables: $ROOT/results/current"
+echo "Group figures:   $ROOT/figures/group"
+echo "Patient figures: $ROOT/figures/patients"
+echo "Tables:          $ROOT/results/current"
