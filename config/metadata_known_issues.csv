@@ -1,11 +1,11 @@
 library_id,raw_sample_id,issue,note
-new_11,11_11_ТУ1_010.1,duplicated_index_in_biological_id,Normalized 11_11_ТУ1_010.1 to ТУ1_010.1
-new_111,111_БА1_071.2а,suffix_after_timepoint,Ignored trailing suffix 'а' for timepoint parsing
-new_81,81_КА1_059.1,duplicate_patient_timepoint,"Same patient/timepoint as new_88; keep both libraries for QC, aggregate for biological analysis."
-new_88,88_КА1_059.1,duplicate_patient_timepoint,"Same patient/timepoint as new_81; keep both libraries for QC, aggregate for biological analysis."
-new_106,106_БА1_071.2,duplicate_patient_timepoint,"Same patient/timepoint as new_111; keep both libraries for QC, aggregate for biological analysis."
-new_111,111_БА1_071.2а,duplicate_patient_timepoint,"Same patient/timepoint as new_106; keep both libraries for QC, aggregate for biological analysis."
-new_21,21_ОЛ1_016.1,unresolved_patient_id,"Adult list contains ОЛ1_018, not ОЛ1_016. Do not auto-correct."
-new_22,22_СА1_017.1,unresolved_patient_id,No exact patient ID in current child/adult lists. Do not auto-correct.
-new_23,23_МС1_018.1,unresolved_patient_id,No exact patient ID in current child/adult lists. Do not auto-correct.
-new_24,24_ФО1_019.1,unresolved_patient_id,"Child list contains ФО1_017, not ФО1_019. Do not auto-correct."
+new_11,11_11_ТУ1_010.1,duplicated_index_in_biological_id,Normalized biological patient to ТУ1_010; raw sequencing label is preserved.
+new_21,21_ОЛ1_016.1,patient_id_reconciled,"Reconciled to patient ОЛ1_018 using the uploaded clinical metadata; ОЛ1_018.2 is also sequenced as new_75."
+new_22,22_СА1_017.1,patient_id_reconciled,"Reconciled to patient СА1_019 using the uploaded clinical metadata; the original raw sequencing label is preserved for traceability."
+new_23,23_МС1_018.1,patient_id_reconciled,"Reconciled to patient МС1_020 using the uploaded clinical metadata; the original raw sequencing label is preserved for traceability."
+new_24,24_ФО1_019.1,unresolved_patient_id,"No exact ФО1_019 patient exists in the uploaded clinical metadata and ФО1_017.1 already has another sequenced library. MiXCR processing is retained but include=False for biological inference."
+new_81,81_КА1_059.1,timepoint_mapping_conflict,"Clinical metadata contains КА1_059.1 and КА1_059.2, whereas new_81 and new_88 are both labelled КА1_059.1 in the sequencing table. new_81 is retained as the unambiguous .1 library."
+new_88,88_КА1_059.1,timepoint_mapping_conflict,"Could be the clinical КА1_059.2 sample, but the sequencing label says .1. MiXCR processing is retained but include=False until the mapping is confirmed."
+new_106,106_БА1_071.2,timepoint_mapping_conflict,"Clinical metadata lists БА1_071.2 and БА1_071.3. new_106 is the unambiguous .2 library and remains included."
+new_111,111_БА1_071.2а,timepoint_mapping_conflict,"Clinical metadata lists БА1_071.2 and БА1_071.3, but the sequencing label .2а does not prove which biological sample it represents. MiXCR processing is retained but include=False until confirmed."
+new_111,111_БА1_071.2а,suffix_after_timepoint,"Trailing suffix 'а' is preserved in raw_sample_id; analysis_timepoint stays 2 only for file bookkeeping, while biological inference is excluded pending reconciliation."
