@@ -93,31 +93,36 @@ def verify_full_outputs() -> None:
         "results/sample_manifest_resolved.csv",
         "results/fastq_audit.csv",
         "results/sample_qc.csv",
+        "results/raw_fastq_depth.csv",
         "results/combined_trb_clonotypes.csv",
         "results/diversity_metrics.csv",
-        "results/antigen_specificity_by_sample.csv",
-        "results/longitudinal/patient_aav_overlap.csv",
-        "results/longitudinal/trbv_patient_transition_summary.csv",
-        "results/longitudinal/trbv_group_statistics.csv",
-        "results/longitudinal/trbv_top_patterns.csv",
-        "results/statistical_tests.csv",
-        "results/result_summary.txt",
+        "results/antigen_reference_used.csv",
+        "results/corrected/sample_metadata_enriched_with_analysis.csv",
+        "results/corrected/patient_summary.csv",
+        "results/corrected/cross_sectional_statistics.csv",
+        "results/corrected/longitudinal_statistics.csv",
+        "results/corrected/T1_T2_repertoire_similarity.csv",
+        "results/corrected/TRBV_T1_T2_paired_statistics.csv",
+        "results/corrected/corrected_vj_usage_by_sample.csv",
+        "results/corrected/specificity_reference_coverage.csv",
+        "results/corrected/MM1_033_identity_QC.csv",
     ]
-    require_files(required, "Full output")
+    require_files(required, "Corrected full output")
 
+    corrected_figures = ROOT / "figures" / "corrected"
+    required_prefixes = [f"{i:02d}_" for i in range(0, 16)]
     missing = []
-    for i in range(1, 11):
-        prefix = f"{i:02d}_"
-        if not any(p.name.startswith(prefix) and p.suffix == ".png" for p in (ROOT / "figures").glob("*.png")):
-            missing.append(f"figures/{prefix}*.png")
+    for prefix in required_prefixes:
+        if not any(p.name.startswith(prefix) and p.suffix == ".png" for p in corrected_figures.glob("*.png")):
+            missing.append(f"figures/corrected/{prefix}*.png")
 
-    patient_venns = list((ROOT / "figures" / "patients").glob("*_aav_venn.png"))
+    patient_venns = list((corrected_figures / "patients").glob("*_clinical_aav_venn.png"))
     if not patient_venns:
-        missing.append("figures/patients/*_aav_venn.png")
+        missing.append("figures/corrected/patients/*_clinical_aav_venn.png")
 
     if missing:
-        raise RuntimeError(f"Full output verification failed; missing: {missing}")
-    print(f"Full output verification passed. Patient Venn figures: {len(patient_venns)}")
+        raise RuntimeError(f"Corrected full output verification failed; missing: {missing}")
+    print(f"Corrected full output verification passed. Clinical patient Venn figures: {len(patient_venns)}")
 
 
 def main() -> None:
