@@ -17,7 +17,7 @@ def fail(msg):
 
 required = [
     "README.md", "RUN_GUIDE.md", "environment.yml", "config/sample_manifest.csv",
-    "config/metadata_known_issues.csv", "config/SOURCE_NOTES.md",
+    "config/clinical_metadata_sequenced.csv", "config/metadata_known_issues.csv", "config/SOURCE_NOTES.md",
     "notebooks/00_prepare_and_mixcr.ipynb", "notebooks/01_measles_analysis.ipynb",
     "scripts/preprocess_human_trb.py", "scripts/mixcr_smoke_test.py",
     "scripts/analysis_01_prepare.py", "scripts/analysis_02_antigens.py",
@@ -45,6 +45,7 @@ for path in (ROOT / "scripts").glob("*.py"):
         fail(f"Python syntax error in {path.name}: {exc}")
 
 manifest = pd.read_csv(ROOT / "config/sample_manifest.csv")
+clinical = pd.read_csv(ROOT / "config/clinical_metadata_sequenced.csv")
 new = manifest[manifest.batch.eq("new")].copy()
 legacy = manifest[manifest.batch.eq("legacy")].copy()
 if len(new) != 96:
@@ -54,9 +55,18 @@ if len(legacy) != 16:
 if new.library_id.duplicated().any() or new.sequencing_index.duplicated().any():
     fail("new sequencing library IDs/indices must be unique")
 
-if set(new.loc[new.patient_id.str.startswith("СА1_", na=False), "patient_id"]) < {"СА1_013", "СА1_017"}:
-    fail("patient IDs СА1_013 and СА1_017 are not kept as distinct people")
+# Reconciliations from the uploaded clinical workbook.
+expected_reconciled = {
+    "new_21": "ОЛ1_018",
+    "new_22": "СА1_019",
+    "new_23": "МС1_020",
+}
+new_by_lib = new.set_index("library_id")
+for lib, patient in expected_reconciled.items():
+    if str(new_by_lib.loc[lib, "patient_id"]) != patient:
+        fail(f"clinical metadata reconciliation changed for {lib}: expected {patient}")
 
+# The raw sequencing-table label must still keep the sequencing index and sample suffix.
 for r in new.itertuples(index=False):
     if not str(r.raw_sample_id).startswith(str(r.sequencing_index) + "_"):
         fail(f"sequencing prefix mismatch: {r.library_id} {r.raw_sample_id}")
@@ -67,10 +77,38 @@ for r in new.itertuples(index=False):
 expected_new_controls = {
     "ТУ1_010", "СМ1_021", "СА1_024", "КА1_025", "ПЛ1_032",
     "АЕ1_035", "СА1_046", "АЖ1_050", "АА1_051",
+    "ВА1_060", "ЛВ1_061", "КП1_064",
 }
-observed_new_controls = set(new.loc[new.is_control.astype(str).str.lower().isin(["true", "1"]), "patient_id"])
+observed_new_controls = set(
+    new.loc[
+        new.is_control.astype(str).str.lower().isin(["true", "1"])
+        & new.include.astype(str).str.lower().isin(["true", "1"]),
+        "patient_id",
+    ]
+)
 if observed_new_controls != expected_new_controls:
     fail(f"new control mapping changed: {sorted(observed_new_controls)}")
+
+included_new = new[new.include.astype(str).str.lower().isin(["true", "1"])].copy()
+if included_new.age_group.astype(str).eq("unknown").any():
+    bad = sorted(included_new.loc[included_new.age_group.astype(str).eq("unknown"), "library_id"])
+    fail(f"included new libraries must have adult/child metadata: {bad}")
+
+expected_excluded_new = {"new_24", "new_88", "new_111"}
+observed_excluded_new = set(new.loc[~new.include.astype(str).str.lower().isin(["true", "1"]), "library_id"])
+if observed_excluded_new != expected_excluded_new:
+    fail(f"unresolved new-library exclusion set changed: {sorted(observed_excluded_new)}")
+
+# The patient-level clinical table must agree with the manifest for included new patients.
+clinical = clinical.set_index("patient_id")
+for r in included_new.itertuples(index=False):
+    if r.patient_id not in clinical.index:
+        fail(f"included patient missing from clinical metadata table: {r.patient_id}")
+    c = clinical.loc[r.patient_id]
+    if str(c["disease_status"]) != str(r.disease_status):
+        fail(f"disease-status mismatch for {r.patient_id}")
+    if str(c["age_group"]) != str(r.age_group):
+        fail(f"age-group mismatch for {r.patient_id}")
 
 legacy = legacy.set_index("sequencing_index")
 if set(legacy["age_group"].astype(str)) != {"adult"}:
