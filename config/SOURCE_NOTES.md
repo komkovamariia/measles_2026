@@ -4,52 +4,59 @@
 
 `Корь_Влада.docx` is the source for the 96 sequencing-library records and their sequencing indices. The integer before the first underscore maps a FASTQ prefix to a sequencing record. The raw sequencing label is preserved in `raw_sample_id` for traceability.
 
-The uploaded clinical workbook `Корь метадата.xlsx` is the authoritative source for disease status, age group and **clinical sampling phase** for sequenced new-cohort patients. The analysis-ready fields are stored in `config/sample_manifest.csv`:
+The uploaded clinical workbook `Корь метадата.xlsx` is used for disease status and age metadata for sequenced new-cohort patients. The study owner subsequently clarified the authoritative longitudinal rule from the sequencing/sample list: **there is no T0 in this study** and the final suffix denotes the study time point directly:
+
+- `.1` -> `T1`;
+- `.2` and labelled variants such as `.2а` -> `T2`;
+- `.3` -> `T3`.
+
+The analysis-ready fields are stored in `config/sample_manifest.csv`:
 
 - `disease_status`: `measles` / `healthy`;
 - `is_control`: healthy-control flag;
-- `age_group`: `adult` / `child`;
-- `clinical_timepoint`: `T0`, `T1`, `T2`, or `T3`;
+- `age_group`: `adult` / `child`, with the current study rule child < 6 years and adult >= 6 years;
+- `clinical_timepoint`: `T1`, `T2`, or `T3` for new sequencing libraries;
 - `include`: whether the library is currently eligible for biological inference.
 
 Patients present in the clinical workbook but absent from sequencing are not added to the repertoire analysis.
 
-## Clinical time points are not inferred from the suffix
+## Authoritative time-point rule: no T0
 
-The numeric suffix `.1/.2/.3` is retained as sequencing bookkeeping in `analysis_timepoint`, but it is **not a universally valid clinical-stage variable**. Downstream biological longitudinal analysis must use `clinical_timepoint`.
+The previous interpretation that clinical workbook columns could remap the numeric suffix to another phase has been retired. For the new sequencing cohort, `analysis_timepoint` and `clinical_timepoint` must agree with the suffix in `raw_sample_id`.
 
-Examples confirmed by the workbook:
+Examples:
 
 - `СА1_013.1/.2/.3` -> `T1/T2/T3`;
-- `ММ1_033.1` -> `T1`, while both `ММ1_033.2` and `ММ1_033.3` are listed in the clinical `T2` field;
-- `ЭГ1_042.1/.2/.3` -> `T0/T1/T2`;
-- `ПМ1_009.1/.2` -> `T2/T3`;
-- `ГА1_003.2` -> `T3`;
-- `ОЛ1_018.2` -> `T3`.
+- `ММ1_033.1/.2/.3` -> `T1/T2/T3`;
+- `ЭГ1_042.1/.2/.3` -> `T1/T2/T3`;
+- `ПМ1_009.1/.2` -> `T1/T2`;
+- `ГА1_003.2` -> `T2`;
+- `ОЛ1_018.2` -> `T2`;
+- `БА1_071.2а` -> `T2` for the time-point field.
 
-This distinction is essential for all longitudinal figures and statistics.
+`T0` is invalid and repository validation fails if any new sequencing library is assigned to `T0`.
 
 ## Reconciled patient identifiers
 
-The following sequencing labels were reconciled to patient identifiers in the clinical workbook while preserving the raw label:
+The following sequencing labels remain reconciled to patient identifiers in the clinical workbook while preserving the raw sequencing label. The longitudinal point itself is determined from the raw suffix:
 
-- `21_ОЛ1_016.1` -> patient `ОЛ1_018`, clinical `T2`; `75_ОЛ1_018.2` -> the same patient, clinical `T3`;
-- `22_СА1_017.1` -> patient `СА1_019`, clinical `T2`;
-- `23_МС1_018.1` -> patient `МС1_020`, clinical `T2`;
-- `57_НЛ1_043.2` -> patient `НЛ1_043`, clinical `T2`; the workbook cell is written as `НЛ1_0432` without the dot.
+- `21_ОЛ1_016.1` -> patient `ОЛ1_018`, `T1`; `75_ОЛ1_018.2` -> the same patient, `T2`;
+- `22_СА1_017.1` -> patient `СА1_019`, `T1`;
+- `23_МС1_018.1` -> patient `МС1_020`, `T1`;
+- `57_НЛ1_043.2` -> patient `НЛ1_043`, `T2`; the workbook cell is written as `НЛ1_0432` without the dot.
 
-## QC and unresolved sequencing/clinical conflicts
+## QC and unresolved sequencing/identity conflicts
 
-The following libraries have `include=False` and are excluded from biological group/longitudinal inference until resolved:
+The following libraries retain `include=False` and are excluded from biological group/longitudinal inference until resolved. Their time-point suffix is still recorded independently where possible:
 
-- `new_24` / `24_ФО1_019.1`: no exact `ФО1_019` patient exists in the clinical workbook;
-- `new_39` / `39_ММ1_033.2`: strong sample-identity QC warning. Abundance-weighted TRB similarity is approximately 0.00004 for `.1` vs `.2` and 0.00016 for `.2` vs `.3`, while `.1` vs `.3` is approximately 0.57. This pattern is much more consistent with a sample identity/mislabelling problem than ordinary longitudinal turnover. Both `.2` and `.3` are clinical T2 samples; `new_43` remains included as the biologically plausible T2 repertoire;
-- `new_88` / `88_КА1_059.1`: clinical workbook contains `КА1_059.1` and `КА1_059.2`, while both new_81 and new_88 are labelled `.1`;
-- `new_111` / `111_БА1_071.2а`: clinical workbook contains `.2` and `.3`, while suffix `.2а` does not unambiguously identify the biological sample.
+- `new_24` / `24_ФО1_019.1`: patient identity is unresolved relative to the clinical workbook; time point is `T1` from the suffix;
+- `new_39` / `39_ММ1_033.2`: strong sample-identity QC warning. Abundance-weighted TRB similarity is approximately 0.00004 for `.1` vs `.2` and 0.00016 for `.2` vs `.3`, while `.1` vs `.3` is approximately 0.57. This pattern is much more consistent with a sample identity/mislabelling problem than ordinary longitudinal turnover. The time points are nevertheless `T1`, `T2`, `T3` by suffix;
+- `new_88` / `88_КА1_059.1`: a second sequencing library is again labelled `КА1_059.1`; it is `T1` by suffix but remains excluded pending clarification of whether it is a technical replicate or mislabelled sample;
+- `new_111` / `111_БА1_071.2а`: time point is `T2` by suffix, but the library remains excluded by the current curated config pending clarification of the `2а` sample identity.
 
 ## СА1_013 T1 MiXCR export
 
-`new_15` / `15_CA1_013.1` is unequivocally the T1 sample of patient `СА1_013`. Its current MiXCR TSV was header-only and contained zero productive TRB clonotypes. It had been incorrectly accepted as a valid resume output because the previous validity check only inspected the header. The pipeline now removes invalid/header-only exports before resume and requires at least one positive productive TRB clonotype. `new_15` must therefore be regenerated by MiXCR before the corrected СА1_013 T1→T2→T3 trajectory is considered complete.
+`new_15` / `15_CA1_013.1` is unequivocally the `T1` sample of patient `СА1_013`. Its current MiXCR TSV was header-only and contained zero productive TRB clonotypes. It had been incorrectly accepted as a valid resume output because the previous validity check only inspected the header. The pipeline now removes invalid/header-only exports before resume and requires at least one positive productive TRB clonotype. Until that sample is successfully regenerated, T1 is shown in patient QC but excluded from biological overlap; valid `T2` and `T3` can still be compared.
 
 ## Antigen-specificity reference limitation
 
@@ -72,7 +79,7 @@ Primary case-control summaries use the new sequencing batch with one biological 
 Biological analysis uses:
 
 - `patient_id` for biological identity;
-- `clinical_timepoint` for longitudinal phase;
+- `clinical_timepoint` for longitudinal phase, with new-cohort `.1/.2/.3 = T1/T2/T3` and no T0;
 - `is_control` / `disease_status` for control-vs-measles comparisons;
-- `age_group` for adult/child stratification;
+- `age_group` for adult/child stratification using child < 6 years, adult >= 6 years;
 - `include=False` to exclude unresolved/QC-failed libraries from biological inference while retaining traceability.
