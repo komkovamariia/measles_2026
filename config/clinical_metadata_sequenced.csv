@@ -1,20 +1,20 @@
 patient_id,disease_status,is_control,age_group,age_text,metadata_source
-UDP0097,measles,False,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0098,measles,False,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0099,measles,False,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0100,measles,False,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0101,measles,False,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0102,measles,False,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0103,measles,False,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0104,measles,False,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0105,measles,False,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0106,healthy,True,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0107,healthy,True,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0108,healthy,True,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0109,healthy,True,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0110,healthy,True,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0111,healthy,True,adult,взрослый,legacy cohort rule confirmed by study owner
-UDP0112,healthy,True,adult,взрослый,legacy cohort rule confirmed by study owner
+UDP0097,measles,False,adult,,legacy cohort rule confirmed by study owner
+UDP0098,measles,False,adult,,legacy cohort rule confirmed by study owner
+UDP0099,measles,False,adult,,legacy cohort rule confirmed by study owner
+UDP0100,measles,False,adult,,legacy cohort rule confirmed by study owner
+UDP0101,measles,False,adult,,legacy cohort rule confirmed by study owner
+UDP0102,measles,False,adult,,legacy cohort rule confirmed by study owner
+UDP0103,measles,False,adult,,legacy cohort rule confirmed by study owner
+UDP0104,measles,False,adult,,legacy cohort rule confirmed by study owner
+UDP0105,measles,False,adult,,legacy cohort rule confirmed by study owner
+UDP0106,healthy,True,adult,,legacy cohort rule confirmed by study owner
+UDP0107,healthy,True,adult,,legacy cohort rule confirmed by study owner
+UDP0108,healthy,True,adult,,legacy cohort rule confirmed by study owner
+UDP0109,healthy,True,adult,,legacy cohort rule confirmed by study owner
+UDP0110,healthy,True,adult,,legacy cohort rule confirmed by study owner
+UDP0111,healthy,True,adult,,legacy cohort rule confirmed by study owner
+UDP0112,healthy,True,adult,,legacy cohort rule confirmed by study owner
 АА1_051,healthy,True,adult,62 года,Корь метадата.xlsx
 АА1_073,measles,False,child,2 года,Корь метадата.xlsx
 АЕ1_035,healthy,True,child,5 мес,Корь метадата.xlsx
@@ -24,7 +24,7 @@ UDP0112,healthy,True,adult,взрослый,legacy cohort rule confirmed by stud
 БД1_062,measles,False,child,2 года,Корь метадата.xlsx
 БМ1_074,measles,False,child,2 года,Корь метадата.xlsx
 ВА1_060,healthy,True,child,1 год 8 мес,Корь метадата.xlsx
-ВА1_068,measles,False,child,8 лет,Корь метадата.xlsx
+ВА1_068,measles,False,adult,8 лет,Корь метадата.xlsx
 ВС1_065,measles,False,child,5 лет,Корь метадата.xlsx
 ВС1_066,measles,False,child,1 год,Корь метадата.xlsx
 ГА1_003,measles,False,child,1г 6 мес,Корь метадата.xlsx
@@ -46,17 +46,17 @@ UDP0112,healthy,True,adult,взрослый,legacy cohort rule confirmed by stud
 КУ1_048,measles,False,child,4 года,Корь метадата.xlsx
 КЮ1_029,measles,False,child,4 года,Корь метадата.xlsx
 ЛВ1_061,healthy,True,child,1 год,Корь метадата.xlsx
-ММ1_033,measles,False,child,16 лет,Корь метадата.xlsx
+ММ1_033,measles,False,adult,16 лет,Корь метадата.xlsx
 МО1_063,measles,False,adult,20 лет,Корь метадата.xlsx
 МР1_038,measles,False,adult,33 года,Корь метадата.xlsx
 МР1_053,measles,False,child,5 лет,Корь метадата.xlsx
 МС1_020,measles,False,adult,22 года,Корь метадата.xlsx
-МС1_052,measles,False,child,7 лет,Корь метадата.xlsx
+МС1_052,measles,False,adult,7 лет,Корь метадата.xlsx
 НЛ1_043,measles,False,adult,40 лет,Корь метадата.xlsx
 ОЛ1_018,measles,False,adult,39 лет,Корь метадата.xlsx
 ОР1_037,measles,False,adult,19 лет,Корь метадата.xlsx
-ПВ1_014,measles,False,child,15 лет,Корь метадата.xlsx
-ПИ1_015,measles,False,child,11 лет,Корь метадата.xlsx
+ПВ1_014,measles,False,adult,15 лет,Корь метадата.xlsx
+ПИ1_015,measles,False,adult,11 лет,Корь метадата.xlsx
 ПЛ1_032,healthy,True,adult,53 года,Корь метадата.xlsx
 ПМ1_009,measles,False,adult,23 года,Корь метадата.xlsx
 РС1_076,measles,False,adult,20 лет,Корь метадата.xlsx
@@ -73,12 +73,12 @@ UDP0112,healthy,True,adult,взрослый,legacy cohort rule confirmed by stud
 ТУ1_010,healthy,True,adult,27 лет,Корь метадата.xlsx
 УМ1_075,measles,False,adult,19 лет,Корь метадата.xlsx
 ФН1_067,measles,False,adult,53 года,Корь метадата.xlsx
-ФО1_017,measles,False,child,16 лет,Корь метадата.xlsx
+ФО1_017,measles,False,adult,16 лет,Корь метадата.xlsx
 ФО1_019,unknown,False,unknown,,unresolved sequencing label
 ХМ1_045,measles,False,adult,30 лет,Корь метадата.xlsx
-ЦА1_044,measles,False,child,6 лет,Корь метадата.xlsx
-ШГ1_016,measles,False,child,13 лет,Корь метадата.xlsx
-ШК1_023,measles,False,child,9 лет,Корь метадата.xlsx
+ЦА1_044,measles,False,adult,6 лет,Корь метадата.xlsx
+ШГ1_016,measles,False,adult,13 лет,Корь метадата.xlsx
+ШК1_023,measles,False,adult,9 лет,Корь метадата.xlsx
 ШЭ1_056,measles,False,adult,19 лет,Корь метадата.xlsx
 ШЮ1_026,measles,False,adult,38 лет,Корь метадата.xlsx
 ШЮ1_039,measles,False,adult,53 года,Корь метадата.xlsx
