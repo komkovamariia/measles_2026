@@ -46,7 +46,7 @@ else
   echo "Reuse results/raw_fastq_depth.csv"
 fi
 
-# Remove only derived downstream outputs. MiXCR exports and clonotype TSVs are preserved.
+# Remove derived downstream outputs. MiXCR exports and clonotype TSVs are preserved.
 echo "Removing stale derived outputs..."
 rm -rf \
   results/corrected \
@@ -57,9 +57,7 @@ rm -rf \
   figures/current
 mkdir -p results figures
 
-# IMPORTANT: run scripts as real Python files, not through notebook exec().
-# This guarantees that __file__ is defined and avoids the nbclient NameError
-# that previously stopped analysis_06_clinical_summary.py.
+# Run scripts as real Python files so __file__ is always defined.
 echo "Running analysis_01_prepare.py..."
 python scripts/analysis_01_prepare.py
 
@@ -75,6 +73,10 @@ python scripts/analysis_07_age6_reporting.py
 echo "Running analysis_08_final_reporting.py..."
 python scripts/analysis_08_final_reporting.py
 
+# Replace older patient-level figures with the final clinician-facing composite panels.
+echo "Running analysis_09_patient_panels.py..."
+python scripts/analysis_09_patient_panels.py
+
 echo "Publishing final figures to top-level figures/..."
 python scripts/publish_current_figures.py
 
@@ -89,7 +91,8 @@ for f in \
   figures/09_TRBJ_usage_adult.png \
   "figures/patients/СА1_013_repertoire_QC_and_overlap.png" \
   results/current/sample_metadata_current.csv \
-  results/current/patient_sample_QC_current.csv
+  results/current/patient_panel_index.csv \
+  results/current/patients/СА1_013_shared_clonotypes.csv
 do
   if [[ ! -s "$f" ]]; then
     echo "ERROR: expected refreshed output is missing: $f" >&2
@@ -97,9 +100,14 @@ do
   fi
 done
 
+# The user-facing figures/ directory should contain only current published outputs.
+# Intermediate figure directories are deleted after successful publication.
+echo "Removing intermediate figure directories..."
+rm -rf figures/corrected figures/corrected_age6 figures/current
+
 echo
 echo "===== USER-FACING FIGURES ====="
-find figures -maxdepth 1 -type f -printf '%TY-%Tm-%Td %TH:%TM:%TS  %p\n' | sort
+find figures -maxdepth 2 -type f -printf '%TY-%Tm-%Td %TH:%TM:%TS  %p\n' | sort
 
 echo
 echo "===== CA1_013 ====="
@@ -108,4 +116,5 @@ ls -lh "figures/patients/СА1_013_repertoire_QC_and_overlap.png"
 echo
 echo "Refresh completed successfully."
 echo "Open: $ROOT/figures"
+echo "Only published current figures are retained in figures/."
 echo "Tables: $ROOT/results/current"
