@@ -4,19 +4,19 @@ new_11,11,new,11_11_ТУ1_010.1,ТУ1_010,1.0,1.0,T1,healthy,adult,True,True,,11
 new_12,12,new,12_ПМ1_009.2,ПМ1_009,2.0,2.0,T3,measles,adult,False,True,,12
 new_13,13,new,13_СМ1_011.2,СМ1_011,2.0,2.0,T2,measles,adult,False,True,,13
 new_15,15,new,15_CA1_013.1,СА1_013,1.0,1.0,T1,measles,adult,False,True,,15
-new_16,16,new,16_ПВ1_014.1,ПВ1_014,1.0,1.0,T1,measles,child,False,True,,16
-new_17,17,new,17_ПИ1_015.1,ПИ1_015,1.0,1.0,T1,measles,child,False,True,,17
-new_18,18,new,18_ШГ1_016.1,ШГ1_016,1.0,1.0,T1,measles,child,False,True,,18
+new_16,16,new,16_ПВ1_014.1,ПВ1_014,1.0,1.0,T1,measles,adult,False,True,,16
+new_17,17,new,17_ПИ1_015.1,ПИ1_015,1.0,1.0,T1,measles,adult,False,True,,17
+new_18,18,new,18_ШГ1_016.1,ШГ1_016,1.0,1.0,T1,measles,adult,False,True,,18
 new_19,19,new,19_СА1_013.2,СА1_013,2.0,2.0,T2,measles,adult,False,True,,19
-new_20,20,new,20_ФО1_017.1,ФО1_017,1.0,1.0,T1,measles,child,False,True,,20
+new_20,20,new,20_ФО1_017.1,ФО1_017,1.0,1.0,T1,measles,adult,False,True,,20
 new_21,21,new,21_ОЛ1_016.1,ОЛ1_018,1.0,1.0,T2,measles,adult,False,True,sequencing label ОЛ1_016.1 reconciled to clinical ОЛ1_018.1,21
 new_22,22,new,22_СА1_017.1,СА1_019,1.0,1.0,T2,measles,adult,False,True,sequencing label СА1_017.1 reconciled to clinical СА1_019.1,22
 new_23,23,new,23_МС1_018.1,МС1_020,1.0,1.0,T2,measles,adult,False,True,sequencing label МС1_018.1 reconciled to clinical МС1_020.1,23
 new_24,24,new,24_ФО1_019.1,ФО1_019,1.0,1.0,,unknown,unknown,False,False,No exact clinical sample ФО1_019.1; cannot safely map to ФО1_017.2.,24
 new_25,25,new,25_СМ1_021.1,СМ1_021,1.0,1.0,T1,healthy,adult,True,True,,25
 new_26,26,new,26_КУ1_022.1,КУ1_022,1.0,1.0,T2,measles,child,False,True,,26
-new_27,27,new,27_ШГ1_016.2,ШГ1_016,2.0,2.0,T2,measles,child,False,True,,27
-new_28,28,new,28_ШК1_023.1,ШК1_023,1.0,1.0,T2,measles,child,False,True,,28
+new_27,27,new,27_ШГ1_016.2,ШГ1_016,2.0,2.0,T2,measles,adult,False,True,,27
+new_28,28,new,28_ШК1_023.1,ШК1_023,1.0,1.0,T2,measles,adult,False,True,,28
 new_29,29,new,29_СА1_024.1,СА1_024,1.0,1.0,T1,healthy,adult,True,True,,29
 new_30,30,new,30_КА1_025.1,КА1_025,1.0,1.0,T2,healthy,adult,True,True,,30
 new_31,31,new,31_ШЮ1_026.1,ШЮ1_026,1.0,1.0,T2,measles,adult,False,True,,31
@@ -26,11 +26,11 @@ new_34,34,new,34_КЮ1_029.1,КЮ1_029,1.0,1.0,T2,measles,child,False,True,,34
 new_35,35,new,35_КВ1_030.1,КВ1_030,1.0,1.0,T1,measles,child,False,True,,35
 new_36,36,new,36_КД1_031.1,КД1_031,1.0,1.0,T1,measles,child,False,True,,36
 new_37,37,new,37_ПЛ1_032.1,ПЛ1_032,1.0,1.0,T2,healthy,adult,True,True,,37
-new_38,38,new,38_ММ1_033.1,ММ1_033,1.0,1.0,T1,measles,child,False,True,,38
-new_39,39,new,39_ММ1_033.2,ММ1_033,2.0,2.0,T2,measles,child,False,False,"QC identity warning: MM1_033.2 has near-zero abundance-weighted TCR similarity to MM1_033.1 and MM1_033.3, while .1 and .3 are mutually similar; exclude from biological inference pending sample identity check.",39
+new_38,38,new,38_ММ1_033.1,ММ1_033,1.0,1.0,T1,measles,adult,False,True,,38
+new_39,39,new,39_ММ1_033.2,ММ1_033,2.0,2.0,T2,measles,adult,False,False,"QC identity warning: MM1_033.2 has near-zero abundance-weighted TCR similarity to MM1_033.1 and MM1_033.3, while .1 and .3 are mutually similar; exclude from biological inference pending sample identity check.",39
 new_40,40,new,40_КА1_034.1,КА1_034,1.0,1.0,T2,measles,child,False,True,,40
 new_41,41,new,41_АЕ1_035.1,АЕ1_035,1.0,1.0,T1,healthy,child,True,True,,41
-new_43,43,new,43_MM1_033.3,ММ1_033,3.0,3.0,T2,measles,child,False,True,,43
+new_43,43,new,43_MM1_033.3,ММ1_033,3.0,3.0,T2,measles,adult,False,True,,43
 new_44,44,new,44_OP1_037.1,ОР1_037,1.0,1.0,T1,measles,adult,False,True,,44
 new_45,45,new,45_MP1_038.1,МР1_038,1.0,1.0,T1,measles,adult,False,True,,45
 new_46,46,new,46_ГА1_003.2,ГА1_003,2.0,2.0,T3,measles,child,False,True,,46
@@ -45,7 +45,7 @@ new_54,54,new,54_ШЮ1_039.2,ШЮ1_039,2.0,2.0,T2,measles,adult,False,True,,54
 new_55,55,new,55_ТТ1_040.2,ТТ1_040,2.0,2.0,T2,measles,adult,False,True,,55
 new_56,56,new,56_ЭГ1_042.2,ЭГ1_042,2.0,2.0,T1,measles,adult,False,True,,56
 new_57,57,new,57_НЛ1_043.2,НЛ1_043,2.0,2.0,T2,measles,adult,False,True,clinical workbook contains НЛ1_0432 without dot; mapped to НЛ1_043.2,57
-new_59,59,new,59_ЦА1_044.2,ЦА1_044,2.0,2.0,T2,measles,child,False,True,,59
+new_59,59,new,59_ЦА1_044.2,ЦА1_044,2.0,2.0,T2,measles,adult,False,True,,59
 new_60,60,new,60_СА1_046.1,СА1_046,1.0,1.0,T2,healthy,adult,True,True,,60
 new_61,61,new,61_ХМ1_045.1,ХМ1_045,1.0,1.0,T1,measles,adult,False,True,,61
 new_62,62,new,62_ЭГ1_042.3,ЭГ1_042,3.0,3.0,T2,measles,adult,False,True,,62
@@ -56,7 +56,7 @@ new_66,66,new,66_КУ1_048.1,КУ1_048,1.0,1.0,T1,measles,child,False,True,,66
 new_67,67,new,67_ИМ1_049.1,ИМ1_049,1.0,1.0,T1,measles,adult,False,True,,67
 new_68,68,new,68_АЖ1_050.1,АЖ1_050,1.0,1.0,T2,healthy,adult,True,True,,68
 new_69,69,new,69_АА1_051.1,АА1_051,1.0,1.0,T2,healthy,adult,True,True,,69
-new_70,70,new,70_МС1_052.1,МС1_052,1.0,1.0,T2,measles,child,False,True,,70
+new_70,70,new,70_МС1_052.1,МС1_052,1.0,1.0,T2,measles,adult,False,True,,70
 new_71,71,new,71_МР1_053.1,МР1_053,1.0,1.0,T2,measles,child,False,True,,71
 new_72,72,new,72_СА1_013.3,СА1_013,3.0,3.0,T3,measles,adult,False,True,,72
 new_73,73,new,73_КУ1_048.2,КУ1_048,2.0,2.0,T2,measles,child,False,True,,73
@@ -77,13 +77,13 @@ new_90,90,new,90_КП1_064.1,КП1_064,1.0,1.0,T1,healthy,child,True,True,,90
 new_91,91,new,91_ВС1_065.1,ВС1_065,1.0,1.0,T1,measles,child,False,True,,91
 new_92,92,new,92_ВС1_066.1,ВС1_066,1.0,1.0,T1,measles,child,False,True,,92
 new_93,93,new,93_ФН1_067.1,ФН1_067,1.0,1.0,T1,measles,adult,False,True,,93
-new_94,94,new,94_ВА1_068.1,ВА1_068,1.0,1.0,T1,measles,child,False,True,,94
+new_94,94,new,94_ВА1_068.1,ВА1_068,1.0,1.0,T1,measles,adult,False,True,,94
 new_95,95,new,95_РЯ1_069.1,РЯ1_069,1.0,1.0,T1,measles,adult,False,True,,95
 new_96,96,new,96_ДД1_070.1,ДД1_070,1.0,1.0,T1,measles,adult,False,True,,96
 new_97,97,new,97_МО1_063.2,МО1_063,2.0,2.0,T2,measles,adult,False,True,,97
 new_98,98,new,98_ВС1_065.2,ВС1_065,2.0,2.0,T2,measles,child,False,True,,98
 new_99,99,new,99_ФН1_067.2,ФН1_067,2.0,2.0,T2,measles,adult,False,True,,99
-new_100,100,new,100_ВА1_068.2,ВА1_068,2.0,2.0,T2,measles,child,False,True,,100
+new_100,100,new,100_ВА1_068.2,ВА1_068,2.0,2.0,T2,measles,adult,False,True,,100
 new_101,101,new,101_БА1_071.1,БА1_071,1.0,1.0,T1,measles,adult,False,True,,101
 new_102,102,new,102_ТД1_072.1,ТД1_072,1.0,1.0,T1,measles,adult,False,True,,102
 new_103,103,new,103_РЯ1_069.2,РЯ1_069,2.0,2.0,T2,measles,adult,False,True,,103
@@ -94,7 +94,7 @@ new_107,107,new,107_ТД1_072.2,ТД1_072,2.0,2.0,T2,measles,adult,False,True,,1
 new_108,108,new,108_УМ1_075.1,УМ1_075,1.0,1.0,T1,measles,adult,False,True,,108
 new_109,109,new,109_РС1_076.1,РС1_076,1.0,1.0,T1,measles,adult,False,True,,109
 new_110,110,new,110_БМ1_074.2,БМ1_074,2.0,2.0,T2,measles,child,False,True,,110
-new_111,111,new,111_БА1_071.2а,БА1_071,2.0,2.0,,measles,adult,False,False,Sequencing label БА1_071.2а cannot be safely assigned to clinical БА1_071.2 versus БА1_071.3.,111
+new_111,111,new,111_БА1_071.2а,БА1_071,2.0,2.0,T2,measles,adult,False,False,Clinical workbook places БА1_071.2/.3 in T2; raw .2а remains excluded by config.,111
 legacy_UDP0097,UDP0097,legacy,UDP0097,UDP0097,1.0,1.0,legacy_acute,measles,adult,False,True,,UDP0097
 legacy_UDP0098,UDP0098,legacy,UDP0098,UDP0098,1.0,1.0,legacy_acute,measles,adult,False,True,,UDP0098
 legacy_UDP0099,UDP0099,legacy,UDP0099,UDP0099,1.0,1.0,legacy_acute,measles,adult,False,True,,UDP0099
