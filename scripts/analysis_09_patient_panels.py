@@ -10,13 +10,15 @@ Each figure contains:
 3) top 10 clonotypes from the Venn intersection, shown by read share in each
    original repertoire;
 4) top 10 TRBV genes by change in summed read share for the primary transition
-   (T1->T2 when available; otherwise the nearest valid clinical transition).
+   (T1->T2 when available; otherwise T2->T3).
 
 Clinical meaning used in plot labels:
 T1 = acute measles / admission
 T2 = clinical recovery
 T3 = follow-up after recovery
-T0 = earliest recorded clinical point
+
+There is no T0 in this study. For new sequencing libraries, the suffix is the
+authoritative time point: .1 -> T1, .2/.2a -> T2, .3 -> T3.
 """
 from __future__ import annotations
 
@@ -66,15 +68,13 @@ clono["count"] = pd.to_numeric(clono["count"], errors="coerce").fillna(0.0)
 for c in ["cdr3aa", "v_gene"]:
     clono[c] = clono[c].fillna("").astype(str)
 
-PHASE_ORDER = {"T0": 0, "T1": 1, "T2": 2, "T3": 3}
+PHASE_ORDER = {"T1": 1, "T2": 2, "T3": 3}
 PHASE_LABEL = {
-    "T0": "T0 — earliest recorded point",
     "T1": "T1 — acute measles / admission",
     "T2": "T2 — clinical recovery",
     "T3": "T3 — follow-up after recovery",
 }
 PHASE_SHORT = {
-    "T0": "Earliest point\n(T0)",
     "T1": "Acute measles\n(T1)",
     "T2": "Clinical recovery\n(T2)",
     "T3": "Follow-up\n(T3)",
@@ -216,7 +216,7 @@ def draw_shared_clones(ax, shared: pd.DataFrame, phases: list[str]):
 
 def choose_primary_transition(phases: list[str]) -> tuple[str, str]:
     phase_set = set(phases)
-    for a, b in [("T1", "T2"), ("T2", "T3"), ("T0", "T1")]:
+    for a, b in [("T1", "T2"), ("T2", "T3")]:
         if a in phase_set and b in phase_set:
             return a, b
     ps = phase_sort(phases)
@@ -303,13 +303,8 @@ for pid in sorted(patient_ids):
     pm_valid = valid_meta[valid_meta["patient_id"].eq(pid)].copy()
     phases_all = phase_sort([p for p in pm_valid["clinical_timepoint"].dropna().unique() if p in PHASE_ORDER])
 
-    # Venn is limited to 3 circles. Prefer biologically standard T1/T2/T3; if not
-    # all present, take the earliest 3 valid clinical phases.
-    if len(phases_all) > 3:
-        preferred = [p for p in ["T1", "T2", "T3"] if p in phases_all]
-        phases = preferred if len(preferred) == 3 else phases_all[:3]
-    else:
-        phases = phases_all
+    # Venn uses all valid study phases; the study has at most T1/T2/T3.
+    phases = phases_all
     if len(phases) < 2:
         continue
 
@@ -319,10 +314,6 @@ for pid in sorted(patient_ids):
 
     shared = shared_clone_table(point_tables, phases)
     a, b = choose_primary_transition(phases_all)
-    # Primary transition may involve a phase not displayed only in the rare >3-point case.
-    for p in [a, b]:
-        if p not in point_tables:
-            point_tables[p] = aggregate_point_cached(pid, p)
     trbv = trbv_change_table(point_tables, a, b)
 
     # Persist underlying patient-level tables for interpretation/audit.
