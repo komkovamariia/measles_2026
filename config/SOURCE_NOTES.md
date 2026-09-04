@@ -2,49 +2,77 @@
 
 ## New cohort
 
-`Корь_Влада.docx` remains the source for the 96 sequencing-library records and their sequencing indices. The integer before the first underscore maps the FASTQ prefix to the sequencing-table record. The raw sequencing label is preserved in `raw_sample_id` for traceability.
+`Корь_Влада.docx` is the source for the 96 sequencing-library records and their sequencing indices. The integer before the first underscore maps a FASTQ prefix to a sequencing record. The raw sequencing label is preserved in `raw_sample_id` for traceability.
 
-The uploaded workbook `Корь метадата.xlsx` is now the authoritative source for **disease status (measles/healthy) and age group (adult/child)** for new-cohort patients that are represented in sequencing. The repository stores the sequenced subset of those patient-level annotations in `config/clinical_metadata_sequenced.csv`, and the analysis-ready values are propagated into `config/sample_manifest.csv` as `disease_status`, `is_control`, and `age_group`.
+The uploaded clinical workbook `Корь метадата.xlsx` is the authoritative source for disease status, age group and **clinical sampling phase** for sequenced new-cohort patients. The analysis-ready fields are stored in `config/sample_manifest.csv`:
 
-Patients present in the clinical workbook but absent from the sequencing manifest are not added to the repertoire analysis.
+- `disease_status`: `measles` / `healthy`;
+- `is_control`: healthy-control flag;
+- `age_group`: `adult` / `child`;
+- `clinical_timepoint`: `T0`, `T1`, `T2`, or `T3`;
+- `include`: whether the library is currently eligible for biological inference.
 
-### Reconciled patient identifiers
+Patients present in the clinical workbook but absent from sequencing are not added to the repertoire analysis.
 
-Three sequencing labels were reconciled to patient identifiers in the uploaded clinical workbook while preserving the original raw label:
+## Clinical time points are not inferred from the suffix
 
-- `21_ОЛ1_016.1` -> patient `ОЛ1_018`, time point 1. The same patient has `75_ОЛ1_018.2`.
-- `22_СА1_017.1` -> patient `СА1_019`, time point 1.
-- `23_МС1_018.1` -> patient `МС1_020`, time point 1.
+The numeric suffix `.1/.2/.3` is retained as sequencing bookkeeping in `analysis_timepoint`, but it is **not a universally valid clinical-stage variable**. Downstream biological longitudinal analysis must use `clinical_timepoint`.
 
-### Unresolved sequencing/clinical conflicts
+Examples confirmed by the workbook:
 
-The following libraries are still processed by MiXCR for QC/traceability but have `include=False`, so they are excluded from biological group statistics until their identity/time point is confirmed:
+- `СА1_013.1/.2/.3` -> `T1/T2/T3`;
+- `ММ1_033.1` -> `T1`, while both `ММ1_033.2` and `ММ1_033.3` are listed in the clinical `T2` field;
+- `ЭГ1_042.1/.2/.3` -> `T0/T1/T2`;
+- `ПМ1_009.1/.2` -> `T2/T3`;
+- `ГА1_003.2` -> `T3`;
+- `ОЛ1_018.2` -> `T3`.
 
-- `new_24` / `24_ФО1_019.1`: no exact `ФО1_019` patient exists in the uploaded clinical workbook; `ФО1_017.1` is already represented by another sequenced library.
-- `new_88` / `88_КА1_059.1`: the clinical workbook contains `КА1_059.1` and `КА1_059.2`, while both `new_81` and `new_88` are labelled `.1` in the sequencing table.
-- `new_111` / `111_БА1_071.2а`: the clinical workbook contains `БА1_071.2` and `БА1_071.3`, but `.2а` does not unambiguously identify which biological sample was sequenced.
+This distinction is essential for all longitudinal figures and statistics.
 
-The analysis therefore uses only unambiguous included libraries for age/status comparisons and longitudinal biological inference.
+## Reconciled patient identifiers
+
+The following sequencing labels were reconciled to patient identifiers in the clinical workbook while preserving the raw label:
+
+- `21_ОЛ1_016.1` -> patient `ОЛ1_018`, clinical `T2`; `75_ОЛ1_018.2` -> the same patient, clinical `T3`;
+- `22_СА1_017.1` -> patient `СА1_019`, clinical `T2`;
+- `23_МС1_018.1` -> patient `МС1_020`, clinical `T2`;
+- `57_НЛ1_043.2` -> patient `НЛ1_043`, clinical `T2`; the workbook cell is written as `НЛ1_0432` without the dot.
+
+## QC and unresolved sequencing/clinical conflicts
+
+The following libraries have `include=False` and are excluded from biological group/longitudinal inference until resolved:
+
+- `new_24` / `24_ФО1_019.1`: no exact `ФО1_019` patient exists in the clinical workbook;
+- `new_39` / `39_ММ1_033.2`: strong sample-identity QC warning. Abundance-weighted TRB similarity is approximately 0.00004 for `.1` vs `.2` and 0.00016 for `.2` vs `.3`, while `.1` vs `.3` is approximately 0.57. This pattern is much more consistent with a sample identity/mislabelling problem than ordinary longitudinal turnover. Both `.2` and `.3` are clinical T2 samples; `new_43` remains included as the biologically plausible T2 repertoire;
+- `new_88` / `88_КА1_059.1`: clinical workbook contains `КА1_059.1` and `КА1_059.2`, while both new_81 and new_88 are labelled `.1`;
+- `new_111` / `111_БА1_071.2а`: clinical workbook contains `.2` and `.3`, while suffix `.2а` does not unambiguously identify the biological sample.
+
+## СА1_013 T1 MiXCR export
+
+`new_15` / `15_CA1_013.1` is unequivocally the T1 sample of patient `СА1_013`. Its current MiXCR TSV was header-only and contained zero productive TRB clonotypes. It had been incorrectly accepted as a valid resume output because the previous validity check only inspected the header. The pipeline now removes invalid/header-only exports before resume and requires at least one positive productive TRB clonotype. `new_15` must therefore be regenerated by MiXCR before the corrected СА1_013 T1→T2→T3 trajectory is considered complete.
+
+## Antigen-specificity reference limitation
+
+The current `IEDB_data.tsv` TCRMatch subset used by the project contains 763 unique Hepatitis B reference CDR3 sequences but no reference records labelled Measles, Poliovirus or Tetanus. Therefore zero exact matches for those three pathogens are **not biological evidence of absence**. The pipeline records reference coverage explicitly and reports unavailable pathogens as missing/unsupported rather than zero. Exact matching should be treated as a conservative annotation layer; a validated broader specificity/similarity reference is required before the measles and immune-amnesia hypotheses can be answered from antigen annotation.
 
 ## Legacy cohort
 
-The old FASTQ files are stored under `/projects/mice_transplant_2025/measles/raw/pe150_res` and are named like `FT150008642_56_L01_UDP0112_1.fq.gz` and `FT150008642_56_L01_UDP0112_2.fq.gz`.
+Old FASTQ files are stored under `/projects/mice_transplant_2025/measles/raw/pe150_res` and are named like `FT150008642_56_L01_UDP0112_1.fq.gz` and `_2.fq.gz`.
 
-The study owner clarified that all legacy libraries are adults and are different people from the patients in the new cohort. Therefore the legacy patient identifiers are kept as independent `UDP0097` ... `UDP0112` IDs and are never linked longitudinally to similarly numbered/new biological codes.
+All legacy libraries are adults and are different people from the new cohort. Legacy identifiers remain independent `UDP0097` ... `UDP0112` patients and are never linked longitudinally to new biological codes.
 
-Disease-status rules:
-
-- UDP0097-UDP0105: adult measles cases assigned to analysis time point 1;
+- UDP0097-UDP0105: adult measles cases, retained as `legacy_acute` for sensitivity analyses;
 - UDP0106-UDP0112: healthy adult controls;
-- UDP0108: processed for the historical UDP0107/UDP0108 QC comparison but excluded from biological inference because of the previously identified similarity/depth problem.
+- UDP0108: processed for QC but excluded from biological inference.
 
-The earlier tentative mapping of legacy UDP libraries to new patient IDs is retired and must not be restored.
+Primary case-control summaries use the new sequencing batch with one biological sample per patient to limit batch confounding. Adult all-batch comparisons are retained as sensitivity analyses.
 
-## Grouping contract used by downstream analysis
+## Downstream grouping contract
 
-`scripts/analysis_01_prepare.py` reads the resolved manifest created from `config/sample_manifest.csv`. Group separation therefore follows the current manifest fields:
+Biological analysis uses:
 
-- `is_control=True` / `disease_status=healthy` -> healthy controls;
-- `disease_status=measles` -> measles cases;
-- `age_group=adult` or `child` -> age-stratified analyses;
-- `include=False` -> processed if FASTQ is available, but excluded from biological inference.
+- `patient_id` for biological identity;
+- `clinical_timepoint` for longitudinal phase;
+- `is_control` / `disease_status` for control-vs-measles comparisons;
+- `age_group` for adult/child stratification;
+- `include=False` to exclude unresolved/QC-failed libraries from biological inference while retaining traceability.
