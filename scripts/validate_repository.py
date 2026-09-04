@@ -25,8 +25,9 @@ required = [
     "scripts/analysis_01_prepare.py", "scripts/analysis_02_antigens.py",
     "scripts/analysis_03_figures.py", "scripts/analysis_04_stats.py",
     "scripts/analysis_05_longitudinal_venn.py", "scripts/analysis_06_clinical_summary.py",
-    "scripts/analysis_07_age6_reporting.py",
-    "scripts/run_pipeline.py", "scripts/run_slurm.sh", "run_all_from_scratch.sh",
+    "scripts/analysis_07_age6_reporting.py", "scripts/analysis_08_final_reporting.py",
+    "scripts/run_pipeline.py", "scripts/run_slurm.sh", "scripts/run_analysis_slurm.sh",
+    "run_all_from_scratch.sh",
 ]
 missing = [p for p in required if not (ROOT / p).exists()]
 if missing:
@@ -98,7 +99,6 @@ if included_new.clinical_timepoint.fillna("").astype(str).eq("").any():
 if not set(included_new.clinical_timepoint.astype(str)).issubset({"T0", "T1", "T2", "T3"}):
     fail("included new clinical_timepoint values must be T0/T1/T2/T3")
 
-# Project-wide age split: child < 6 years; adult >= 6 years.
 expected_child_patients = {
     "АА1_073", "АЕ1_035", "БД1_062", "БМ1_074", "ВА1_060", "ВС1_065", "ВС1_066",
     "ГА1_003", "КА1_034", "КВ1_030", "КД1_031", "КИ1_027", "КН1_028", "КП1_064",
@@ -164,4 +164,9 @@ for token in ["python=3.12.13", "matplotlib-venn=1.1", "milaboratories", "mixcr=
     if token not in env:
         fail(f"environment missing reproducibility token: {token}")
 
-print("Repository validation passed. Age split: child < 6 years; adult >= 6 years.")
+final_script = (ROOT / "scripts/analysis_08_final_reporting.py").read_text(encoding="utf-8")
+for token in ["MIN_PRODUCTIVE_CLONOTYPES = 5000", "CA1_013", "analysis_include_final", "figures' / 'current"]:
+    if token not in final_script:
+        fail(f"final reporting contract missing token: {token}")
+
+print("Repository validation passed. Age split: child < 6 years; adult >= 6 years. Final clone-count QC: >= 5,000 productive TRB clonotypes/library.")
