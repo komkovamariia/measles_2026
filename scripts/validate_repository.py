@@ -26,8 +26,9 @@ required = [
     "scripts/analysis_03_figures.py", "scripts/analysis_04_stats.py",
     "scripts/analysis_05_longitudinal_venn.py", "scripts/analysis_06_clinical_summary.py",
     "scripts/analysis_07_age6_reporting.py", "scripts/analysis_08_final_reporting.py",
+    "scripts/analysis_09_patient_panels.py",
     "scripts/run_pipeline.py", "scripts/run_slurm.sh", "scripts/run_analysis_slurm.sh",
-    "run_all_from_scratch.sh",
+    "scripts/run_analysis_refresh_slurm.sh", "run_all_from_scratch.sh",
 ]
 missing = [p for p in required if not (ROOT / p).exists()]
 if missing:
@@ -66,12 +67,28 @@ if len(legacy) != 16:
 if new.library_id.duplicated().any() or new.sequencing_index.duplicated().any():
     fail("new library IDs and sequencing indices must be unique")
 
+# Authoritative time-point rule supplied by the study owner:
+# suffix .1/.2/.3 (including forms such as .2а) means T1/T2/T3.
+# T0 does not exist in this study.
 for r in new.itertuples(index=False):
     if not str(r.raw_sample_id).startswith(str(r.sequencing_index) + "_"):
         fail(f"sequencing prefix mismatch: {r.library_id} {r.raw_sample_id}")
-    m = re.search(r"\.([1-4])(?:[A-Za-zА-Яа-яЁё])?$", str(r.raw_sample_id))
-    if not m or int(m.group(1)) != int(float(r.analysis_timepoint)):
+    m = re.search(r"\.([1-3])(?:[A-Za-zА-Яа-яЁё])?$", str(r.raw_sample_id))
+    if not m:
+        fail(f"cannot parse time-point suffix: {r.library_id} {r.raw_sample_id}")
+    suffix = int(m.group(1))
+    if suffix != int(float(r.analysis_timepoint)):
         fail(f"raw suffix / analysis_timepoint mismatch: {r.library_id} {r.raw_sample_id}")
+    expected_phase = f"T{suffix}"
+    if str(r.clinical_timepoint) != expected_phase:
+        fail(
+            f"clinical_timepoint must follow sequencing suffix for {r.library_id}: "
+            f"expected {expected_phase}, found {r.clinical_timepoint}"
+        )
+
+if new.clinical_timepoint.astype(str).eq("T0").any():
+    bad = sorted(new.loc[new.clinical_timepoint.astype(str).eq("T0"), "library_id"])
+    fail(f"T0 is not a study time point; found in: {bad}")
 
 new_by_lib = new.set_index("library_id")
 expected_patient = {"new_21": "ОЛ1_018", "new_22": "СА1_019", "new_23": "МС1_020"}
@@ -79,11 +96,12 @@ for lib, patient in expected_patient.items():
     if str(new_by_lib.loc[lib, "patient_id"]) != patient:
         fail(f"clinical patient reconciliation changed for {lib}: expected {patient}")
 
+# Explicit sentinels for important longitudinal examples.
 expected_phase = {
     "new_15": "T1", "new_19": "T2", "new_72": "T3",
-    "new_38": "T1", "new_39": "T2", "new_43": "T2",
-    "new_51": "T0", "new_56": "T1", "new_62": "T2",
-    "new_10": "T2", "new_12": "T3", "new_46": "T3", "new_75": "T3", "new_57": "T2",
+    "new_38": "T1", "new_39": "T2", "new_43": "T3",
+    "new_51": "T1", "new_56": "T2", "new_62": "T3",
+    "new_10": "T1", "new_12": "T2", "new_46": "T2", "new_75": "T2", "new_57": "T2",
 }
 for lib, phase in expected_phase.items():
     if str(new_by_lib.loc[lib, "clinical_timepoint"]) != phase:
@@ -96,8 +114,8 @@ if included_new.age_group.astype(str).eq("unknown").any():
 if included_new.clinical_timepoint.fillna("").astype(str).eq("").any():
     bad = sorted(included_new.loc[included_new.clinical_timepoint.fillna("").astype(str).eq(""), "library_id"])
     fail(f"included new libraries must have clinical_timepoint: {bad}")
-if not set(included_new.clinical_timepoint.astype(str)).issubset({"T0", "T1", "T2", "T3"}):
-    fail("included new clinical_timepoint values must be T0/T1/T2/T3")
+if not set(included_new.clinical_timepoint.astype(str)).issubset({"T1", "T2", "T3"}):
+    fail("included new clinical_timepoint values must be T1/T2/T3; T0 does not exist")
 
 expected_child_patients = {
     "АА1_073", "АЕ1_035", "БД1_062", "БМ1_074", "ВА1_060", "ВС1_065", "ВС1_066",
@@ -116,7 +134,7 @@ if observed_excluded_new != expected_excluded_new:
     fail(f"new-library exclusion set changed: {sorted(observed_excluded_new)}")
 
 observed_t3 = set(included_new.loc[included_new.clinical_timepoint.eq("T3"), "library_id"])
-expected_t3 = {"new_12", "new_46", "new_72", "new_75"}
+expected_t3 = {"new_43", "new_62", "new_72"}
 if observed_t3 != expected_t3:
     fail(f"clinical T3 set changed: {sorted(observed_t3)}")
 
@@ -169,4 +187,13 @@ for token in ["MIN_PRODUCTIVE_CLONOTYPES = 5000", "CA1_013", "analysis_include_f
     if token not in final_script:
         fail(f"final reporting contract missing token: {token}")
 
-print("Repository validation passed. Age split: child < 6 years; adult >= 6 years. Final clone-count QC: >= 5,000 productive TRB clonotypes/library.")
+patient_script = (ROOT / "scripts/analysis_09_patient_panels.py").read_text(encoding="utf-8")
+if '"T0"' in patient_script or "'T0'" in patient_script:
+    fail("patient reporting must not define T0; study time points are T1/T2/T3")
+
+print(
+    "Repository validation passed. "
+    "Timepoints: suffix .1/.2/.3 = T1/T2/T3; T0 does not exist. "
+    "Age split: child < 6 years; adult >= 6 years. "
+    "Final clone-count QC: >= 5,000 productive TRB clonotypes/library."
+)
