@@ -18,16 +18,91 @@ nohup bash run_all_from_scratch.sh > logs/bootstrap_submit.log 2>&1 &
 echo "bootstrap PID: $!"
 ```
 
-`run_all_from_scratch.sh` performs the steps in sequence:
+`run_all_from_scratch.sh` updates the `measles-tcr-2026` environment, validates metadata and code, checks FASTQ, verifies MiXCR, and submits the Slurm job.
 
-1. creates or updates `measles-tcr-2026` from `environment.yml`;
-2. checks MiXCR and runs `scripts/validate_repository.py`;
-3. verifies the new FASTQ directory;
-4. locates the old `pe150_res` cohort;
-5. caches the IEDB TCRMatch reference before the compute job;
-6. submits `scripts/run_slurm.sh`.
+## Analysis-only rerun: use this after MiXCR has already completed
 
-The full run stops if an included old or new library is missing. This prevents accidental analysis of a partial cohort.
+This is the recommended command after metadata/statistics/plot changes. It does **not** rerun MiXCR.
+
+```bash
+cd ~/measles_2026
+git pull --ff-only
+
+eval "$(conda shell.bash hook)"
+conda activate measles-tcr-2026
+
+python scripts/validate_repository.py
+
+# Raw FASTQ depth is collected only if the table does not already exist.
+if [ ! -s results/raw_fastq_depth.csv ]; then
+  python scripts/collect_fastq_depth.py --workers 8
+fi
+
+python scripts/run_pipeline.py \
+  --stage analysis \
+  --resume \
+  --cpus 24 \
+  --threads-per-sample 4
+```
+
+The analysis notebook now runs:
+
+```text
+analysis_01_prepare.py
+analysis_02_antigens.py
+analysis_06_clinical_summary.py
+analysis_07_age6_reporting.py
+```
+
+The project-wide age rule is:
+
+```text
+child = age < 6 years
+adult = age >= 6 years
+```
+
+## Where to look after the analysis-only rerun
+
+Main corrected statistics and QC:
+
+```text
+results/corrected/
+figures/corrected/
+figures/corrected/patients/
+```
+
+Additional age-6 reporting requested for interpretation:
+
+```text
+results/corrected_age6/
+figures/corrected_age6/
+```
+
+Especially useful files:
+
+```text
+results/corrected_age6/age6_group_summary.csv
+results/corrected_age6/timepoint_age_audit.csv
+results/corrected_age6/TRBV_priority_scores.csv
+results/corrected_age6/venn_T1_T2_vs_healthy_summary.csv
+
+figures/corrected_age6/TRBV_usage_adult_annotated.png
+figures/corrected_age6/TRBV_usage_child_annotated.png
+figures/corrected_age6/TRBJ_usage_adult_annotated.png
+figures/corrected_age6/TRBJ_usage_child_annotated.png
+figures/corrected_age6/TRBV_priority_scores_adult.png
+figures/corrected_age6/TRBV_priority_scores_child.png
+figures/corrected_age6/venn_summary_T1_T2_vs_healthy.png
+```
+
+In annotated TRBV/TRBJ heatmaps each cell contains:
+
+```text
+patients with this gene / all patients in that group
+total reads assigned to this gene across the group
+```
+
+The color represents mean percentage of productive TRB reads assigned to that gene.
 
 ## Data
 
@@ -37,7 +112,7 @@ New batch:
 /projects/mice_transplant_2025/raw/20260817_161454/Fastq
 ```
 
-Every new sequencing index must have exactly four paired lanes L001-L004. The first integer in the FASTQ name maps to `config/sample_manifest.csv`.
+Each new sequencing index has four paired lanes L001-L004. The first integer in the FASTQ name maps to `config/sample_manifest.csv`.
 
 Legacy batch:
 
@@ -52,71 +127,49 @@ FT150008642_56_L01_UDP0112_1.fq.gz
 FT150008642_56_L01_UDP0112_2.fq.gz
 ```
 
-The preprocessor supports this `_1.fq.gz` / `_2.fq.gz` pairing directly.
-
-Legacy biological rules are fixed:
+Legacy biological rules remain fixed:
 
 ```text
-UDP0097-UDP0105 = adult measles cases, analysis time point 1
+UDP0097-UDP0105 = adult measles cases
 UDP0106-UDP0112 = healthy adult controls
 ```
 
-All 16 legacy UDP libraries are different adult people and are independent from all patients in the new cohort. They must never be joined longitudinally to new patient codes. UDP0108 is processed for QC but excluded from biological inference.
+All 16 legacy UDP libraries are independent adult people. UDP0108 is processed for QC but excluded from biological inference.
 
 ## Clinical metadata and group assignment
 
-`config/clinical_metadata_sequenced.csv` is the sequenced subset derived from the uploaded `Корь метадата.xlsx`. For new-cohort patients it is the authoritative source for:
+`config/clinical_metadata_sequenced.csv` and `config/sample_manifest.csv` contain the curated sequenced cohort. `clinical_timepoint` is explicit and is not inferred from the raw `.1/.2/.3` suffix.
+
+Important examples:
 
 ```text
-disease_status = measles / healthy
-is_control     = True / False
-age_group      = adult / child
+СА1_013: .1=T1, .2=T2, .3=T3
+ММ1_033: .1=T1, .2=T2, .3=T2
+ЭГ1_042: .1=T0, .2=T1, .3=T2
 ```
 
-These values are propagated into `config/sample_manifest.csv`, which is the file actually consumed by preprocessing and downstream analysis. Patients present in the clinical workbook but absent from sequencing are not added to the repertoire analysis.
+`new_15 / СА1_013.1` currently has zero productive TRB after MiXCR, therefore it fails biological QC even though the clinical T1 sample exists.
 
-Current reconciliations of raw sequencing labels to biological patients are documented in `config/SOURCE_NOTES.md` and `config/metadata_known_issues.csv`. In particular:
+`new_39 / ММ1_033.2` is excluded from biological inference because its repertoire identity is a strong outlier relative to `.1` and `.3`.
+
+Current unresolved/excluded new libraries are:
 
 ```text
-21_ОЛ1_016.1 -> patient ОЛ1_018, point 1
-22_СА1_017.1 -> patient СА1_019, point 1
-23_МС1_018.1 -> patient МС1_020, point 1
+new_24
+new_39
+new_88
+new_111
 ```
 
-The original raw labels remain unchanged in `raw_sample_id` for traceability.
+## Slurm full run
 
-Three new libraries currently have `include=False` because their biological identity/time point is not unambiguous in the uploaded clinical metadata:
-
-```text
-new_24  = 24_ФО1_019.1
-new_88  = 88_КА1_059.1
-new_111 = 111_БА1_071.2а
-```
-
-They may still be processed by MiXCR, but they are excluded from biological group statistics and longitudinal inference until clarified.
-
-## Patient identity and time points
-
-The `patient_id` column is the biological patient used for grouping. `analysis_timepoint` is the numerical sample point used by the current longitudinal workflow. Different points of the same patient therefore remain adjacent conceptually, for example:
-
-```text
-15_СА1_013.1  -> patient СА1_013, point 1
-19_СА1_013.2  -> patient СА1_013, point 2
-72_СА1_013.3  -> patient СА1_013, point 3
-```
-
-Legacy patient identity is simply the independent UDP code itself, for example `UDP0097` or `UDP0112`.
-
-## Slurm
-
-The submitted job requests 24 CPUs and 64 GB RAM. MiXCR receives 4 threads per library, so at most 6 independent libraries are processed simultaneously.
+The full Slurm job requests 24 CPUs and 64 GB RAM. MiXCR receives 4 threads per library, so at most 6 libraries are processed simultaneously.
 
 Monitor:
 
 ```bash
-cat logs/bootstrap_submit.log
 squeue -u "$USER"
-tail -f logs/slurm_JOBID.out
+tail -F logs/slurm_JOBID.out
 ```
 
 After completion:
@@ -125,58 +178,23 @@ After completion:
 sacct -j JOBID --format=JobID,State,Elapsed,AllocCPUS,TotalCPU,MaxRSS,ReqMem
 ```
 
-## Automatic validation
+## Validation
 
-Before analysis, `scripts/validate_repository.py` checks the required files, notebook structure, Python syntax, 96 new records, 16 legacy records, patient reconciliations, timepoint parsing, clinical control mapping, adult/child completeness for included new libraries, unresolved exclusions, legacy adult case/control rules and pinned environment.
+Before analysis:
 
-During preprocessing, `scripts/preprocess_human_trb.py` checks actual FASTQ availability. New samples require all eight FASTQ files corresponding to four paired lanes. Legacy samples require a valid paired old `_1/_2` or R1/R2 file pair. The audit is saved to:
-
-```text
-results/fastq_audit.csv
-results/metadata_issues.csv
-results/sample_manifest_resolved.csv
+```bash
+python scripts/validate_repository.py
 ```
 
-After the complete pipeline, `scripts/run_pipeline.py` verifies the expected result tables, figures 01-10 and at least one patient aaV Venn figure.
+The validator now checks the age rule explicitly: the included child set must correspond to patients younger than 6 years, while patients aged 6 years or older are adults.
 
-## Patient results
+After a full run `scripts/run_pipeline.py` verifies both the corrected outputs and the additional `corrected_age6` summary tables/figures.
 
-For each included new-cohort patient with at least two time points:
+## MiXCR license
 
-```text
-figures/patients/<PATIENT>_aav_venn.png/pdf
-figures/patients/<PATIENT>_T1_to_T2_trbv_change.png/pdf
-results/longitudinal/patients/<PATIENT>_T1_to_T2_trbv_changes.csv
+MiXCR requires a valid license on the server. If needed:
+
+```bash
+conda activate measles-tcr-2026
+mixcr activate-license
 ```
-
-When T3 exists, a T2→T3 TRBV table and figure are also created.
-
-The Venn feature is `aaV = (CDR3aa, TRBV)`, matching the mouse-project Venn definition. Numerical CDR3-only and aaV overlaps are saved in:
-
-```text
-results/longitudinal/patient_cdr3_overlap.csv
-results/longitudinal/patient_aav_overlap.csv
-```
-
-TRBV change is based on:
-
-```text
-TRBV read fraction = reads assigned to a TRBV / all productive TRB reads in that sample
-```
-
-## Group results
-
-```text
-results/longitudinal/trbv_group_statistics.csv
-results/longitudinal/trbv_top_patterns.csv
-figures/09_group_trbv_patterns.png/pdf
-figures/10_group_trbv_gain_loss.png/pdf
-```
-
-The analysis includes adult/child case-control comparisons, within-status adult/child comparisons, paired T1→T2 and T2→T3 changes, and age-group differences in longitudinal change where sample sizes permit statistical testing. `age_group`, `disease_status`, `is_control`, and `include` are taken from the current resolved manifest, so the uploaded clinical metadata now controls these group assignments for the new cohort.
-
-Other retained results include diversity, top-clone dominance, V/J usage and exact IEDB matches for measles, hepatitis B, poliovirus and tetanus.
-
-## Important external requirement
-
-MiXCR requires a valid MiXCR license on the server. If the account has not previously activated MiXCR, activate the academic license once before leaving an unattended full run.
