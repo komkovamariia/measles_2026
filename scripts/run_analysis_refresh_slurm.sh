@@ -32,6 +32,7 @@ export MEASLES_LEGACY_FASTQ_DIR="${MEASLES_LEGACY_FASTQ_DIR:-/projects/mice_tran
 
 echo "Repository root: $ROOT"
 echo "Git commit: $(git rev-parse HEAD)"
+echo "Timepoints: .1/.2/.3 = T1/T2/T3; T0 does NOT exist"
 echo "Age split: child < 6 years; adult >= 6 years"
 echo "Final biological QC: >= 5000 productive TRB clonotypes/library"
 echo "MiXCR will NOT be rerun."
@@ -76,6 +77,21 @@ python scripts/analysis_08_final_reporting_safe.py
 
 echo "Running analysis_09_patient_panels.py..."
 python scripts/analysis_09_patient_panels.py
+
+echo "Checking that T0 was not reintroduced downstream..."
+python - <<'PY'
+import pandas as pd
+from pathlib import Path
+p = Path('results/current/sample_metadata_current.csv')
+if not p.exists():
+    raise SystemExit(f'Missing {p}')
+df = pd.read_csv(p)
+if 'clinical_timepoint' in df.columns:
+    bad = df[df['clinical_timepoint'].astype(str).eq('T0')]
+    if not bad.empty:
+        raise SystemExit('ERROR: T0 was reintroduced downstream: ' + ', '.join(bad['library_id'].astype(str)))
+print('Downstream timepoint check passed: T1/T2/T3 only for new cohort; no T0.')
+PY
 
 echo "Publishing final figures into figures/group and figures/patients..."
 python scripts/publish_current_figures.py
