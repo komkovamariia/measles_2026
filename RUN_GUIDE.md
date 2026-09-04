@@ -63,17 +63,47 @@ UDP0106-UDP0112 = healthy adult controls
 
 All 16 legacy UDP libraries are different adult people and are independent from all patients in the new cohort. They must never be joined longitudinally to new patient codes. UDP0108 is processed for QC but excluded from biological inference.
 
-## Patient identity
+## Clinical metadata and group assignment
 
-For the new cohort, the complete biological code is the patient ID:
+`config/clinical_metadata_sequenced.csv` is the sequenced subset derived from the uploaded `Корь метадата.xlsx`. For new-cohort patients it is the authoritative source for:
 
 ```text
-15_СА1_013.1  -> patient СА1_013, time point 1
-19_СА1_013.2  -> patient СА1_013, time point 2
-22_СА1_017.1  -> patient СА1_017, time point 1
+disease_status = measles / healthy
+is_control     = True / False
+age_group      = adult / child
 ```
 
-Therefore `СА1_013` and `СА1_017` are different people.
+These values are propagated into `config/sample_manifest.csv`, which is the file actually consumed by preprocessing and downstream analysis. Patients present in the clinical workbook but absent from sequencing are not added to the repertoire analysis.
+
+Current reconciliations of raw sequencing labels to biological patients are documented in `config/SOURCE_NOTES.md` and `config/metadata_known_issues.csv`. In particular:
+
+```text
+21_ОЛ1_016.1 -> patient ОЛ1_018, point 1
+22_СА1_017.1 -> patient СА1_019, point 1
+23_МС1_018.1 -> patient МС1_020, point 1
+```
+
+The original raw labels remain unchanged in `raw_sample_id` for traceability.
+
+Three new libraries currently have `include=False` because their biological identity/time point is not unambiguous in the uploaded clinical metadata:
+
+```text
+new_24  = 24_ФО1_019.1
+new_88  = 88_КА1_059.1
+new_111 = 111_БА1_071.2а
+```
+
+They may still be processed by MiXCR, but they are excluded from biological group statistics and longitudinal inference until clarified.
+
+## Patient identity and time points
+
+The `patient_id` column is the biological patient used for grouping. `analysis_timepoint` is the numerical sample point used by the current longitudinal workflow. Different points of the same patient therefore remain adjacent conceptually, for example:
+
+```text
+15_СА1_013.1  -> patient СА1_013, point 1
+19_СА1_013.2  -> patient СА1_013, point 2
+72_СА1_013.3  -> patient СА1_013, point 3
+```
 
 Legacy patient identity is simply the independent UDP code itself, for example `UDP0097` or `UDP0112`.
 
@@ -97,7 +127,7 @@ sacct -j JOBID --format=JobID,State,Elapsed,AllocCPUS,TotalCPU,MaxRSS,ReqMem
 
 ## Automatic validation
 
-Before analysis, `scripts/validate_repository.py` checks the required files, notebook structure, Python syntax, 96 new records, 16 legacy records, patient identity, timepoint parsing, control mapping, corrected legacy adult case/control rules and pinned environment.
+Before analysis, `scripts/validate_repository.py` checks the required files, notebook structure, Python syntax, 96 new records, 16 legacy records, patient reconciliations, timepoint parsing, clinical control mapping, adult/child completeness for included new libraries, unresolved exclusions, legacy adult case/control rules and pinned environment.
 
 During preprocessing, `scripts/preprocess_human_trb.py` checks actual FASTQ availability. New samples require all eight FASTQ files corresponding to four paired lanes. Legacy samples require a valid paired old `_1/_2` or R1/R2 file pair. The audit is saved to:
 
@@ -111,7 +141,7 @@ After the complete pipeline, `scripts/run_pipeline.py` verifies the expected res
 
 ## Patient results
 
-For each new-cohort patient with at least two time points:
+For each included new-cohort patient with at least two time points:
 
 ```text
 figures/patients/<PATIENT>_aav_venn.png/pdf
@@ -143,7 +173,7 @@ figures/09_group_trbv_patterns.png/pdf
 figures/10_group_trbv_gain_loss.png/pdf
 ```
 
-The analysis includes adult/child case-control comparisons, within-status adult/child comparisons, paired T1→T2 and T2→T3 changes, and age-group differences in longitudinal change where sample sizes permit statistical testing.
+The analysis includes adult/child case-control comparisons, within-status adult/child comparisons, paired T1→T2 and T2→T3 changes, and age-group differences in longitudinal change where sample sizes permit statistical testing. `age_group`, `disease_status`, `is_control`, and `include` are taken from the current resolved manifest, so the uploaded clinical metadata now controls these group assignments for the new cohort.
 
 Other retained results include diversity, top-clone dominance, V/J usage and exact IEDB matches for measles, hepatitis B, poliovirus and tetanus.
 
