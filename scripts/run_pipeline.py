@@ -106,6 +106,11 @@ def verify_full_outputs() -> None:
         "results/corrected/corrected_vj_usage_by_sample.csv",
         "results/corrected/specificity_reference_coverage.csv",
         "results/corrected/MM1_033_identity_QC.csv",
+        "results/corrected_age6/sample_metadata_age6.csv",
+        "results/corrected_age6/age6_group_summary.csv",
+        "results/corrected_age6/TRBV_priority_scores.csv",
+        "results/corrected_age6/venn_T1_T2_vs_healthy_summary.csv",
+        "results/corrected_age6/timepoint_age_audit.csv",
     ]
     require_files(required, "Corrected full output")
 
@@ -119,6 +124,20 @@ def verify_full_outputs() -> None:
     patient_venns = list((corrected_figures / "patients").glob("*_clinical_aav_venn.png"))
     if not patient_venns:
         missing.append("figures/corrected/patients/*_clinical_aav_venn.png")
+
+    age6_figures = ROOT / "figures" / "corrected_age6"
+    for name in [
+        "TRBV_usage_adult_annotated.png",
+        "TRBJ_usage_adult_annotated.png",
+        "TRBV_usage_child_annotated.png",
+        "TRBJ_usage_child_annotated.png",
+        "TRBV_priority_scores_adult.png",
+        "TRBV_priority_scores_child.png",
+        "venn_summary_T1_T2_vs_healthy.png",
+    ]:
+        p = age6_figures / name
+        if not p.exists() or p.stat().st_size == 0:
+            missing.append(f"figures/corrected_age6/{name}")
 
     if missing:
         raise RuntimeError(f"Corrected full output verification failed; missing: {missing}")
