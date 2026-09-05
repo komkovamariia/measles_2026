@@ -2,9 +2,9 @@
 
 ## Current metadata source
 
-The authoritative biological metadata is `config/measles_metadata_v2_age18_final.xlsx`
+The authoritative repository metadata is `config/analysis_metadata.csv`
 
-A plain CSV copy used by the analysis scripts is stored as `config/analysis_metadata.csv`
+It is the machine readable representation of the final reviewed metadata and contains library quality values, final QC status, corrected biological patient identifiers, age strata and biological replicate handling
 
 The current final rules are
 
@@ -24,7 +24,7 @@ T2 is the point immediately after clinical recovery
 
 T3 is the follow up point about one month after recovery
 
-The sequencing suffix is authoritative for the current data
+The sequencing suffix is authoritative for measles case libraries
 
 - `.1` means T1
 - `.2` and `.2а` mean T2
@@ -98,13 +98,7 @@ The overlap feature is `aaV`, defined as CDR3 beta amino acid sequence together 
 
 This threshold removes the low frequency repertoire from the overlap analysis. Bulk genomic DNA TRB sequencing does not directly identify naive, memory or effector phenotype, so the analysis does not claim that every excluded low frequency clonotype is biologically naive
 
-The 0.10 percent threshold is consistent with published TCR repertoire studies that use 0.10 percent as a highly expanded clone threshold and with replicate work showing that TCR beta frequencies around this level are substantially more stable across replicate samples
-
-References
-
-https://pmc.ncbi.nlm.nih.gov/articles/PMC4998859/
-
-https://pmc.ncbi.nlm.nih.gov/articles/PMC10374308/
+The 0.10 percent threshold is an operational threshold and is kept explicit in all analyses so sensitivity analyses can be added later
 
 ## Immune amnesia interpretation
 
