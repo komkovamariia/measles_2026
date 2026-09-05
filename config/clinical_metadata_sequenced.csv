@@ -1,85 +1,83 @@
-patient_id,disease_status,is_control,age_group,age_text,metadata_source
-UDP0097,measles,False,adult,,legacy cohort rule confirmed by study owner
-UDP0098,measles,False,adult,,legacy cohort rule confirmed by study owner
-UDP0099,measles,False,adult,,legacy cohort rule confirmed by study owner
-UDP0100,measles,False,adult,,legacy cohort rule confirmed by study owner
-UDP0101,measles,False,adult,,legacy cohort rule confirmed by study owner
-UDP0102,measles,False,adult,,legacy cohort rule confirmed by study owner
-UDP0103,measles,False,adult,,legacy cohort rule confirmed by study owner
-UDP0104,measles,False,adult,,legacy cohort rule confirmed by study owner
-UDP0105,measles,False,adult,,legacy cohort rule confirmed by study owner
-UDP0106,healthy,True,adult,,legacy cohort rule confirmed by study owner
-UDP0107,healthy,True,adult,,legacy cohort rule confirmed by study owner
-UDP0108,healthy,True,adult,,legacy cohort rule confirmed by study owner
-UDP0109,healthy,True,adult,,legacy cohort rule confirmed by study owner
-UDP0110,healthy,True,adult,,legacy cohort rule confirmed by study owner
-UDP0111,healthy,True,adult,,legacy cohort rule confirmed by study owner
-UDP0112,healthy,True,adult,,legacy cohort rule confirmed by study owner
-АА1_051,healthy,True,adult,62 года,Корь метадата.xlsx
-АА1_073,measles,False,child,2 года,Корь метадата.xlsx
-АЕ1_035,healthy,True,child,5 мес,Корь метадата.xlsx
-АЖ1_050,healthy,True,adult,30 лет,Корь метадата.xlsx
-АУ1_054,measles,False,adult,19 лет,Корь метадата.xlsx
-БА1_071,measles,False,adult,37 лет,Корь метадата.xlsx
-БД1_062,measles,False,child,2 года,Корь метадата.xlsx
-БМ1_074,measles,False,child,2 года,Корь метадата.xlsx
-ВА1_060,healthy,True,child,1 год 8 мес,Корь метадата.xlsx
-ВА1_068,measles,False,adult,8 лет,Корь метадата.xlsx
-ВС1_065,measles,False,child,5 лет,Корь метадата.xlsx
-ВС1_066,measles,False,child,1 год,Корь метадата.xlsx
-ГА1_003,measles,False,child,1г 6 мес,Корь метадата.xlsx
-ДД1_070,measles,False,adult,22 года,Корь метадата.xlsx
-ЕТ1_036,measles,False,adult,38 лет,Корь метадата.xlsx
-ИМ1_049,measles,False,adult,19 лет,Корь метадата.xlsx
-ИХ1_055,measles,False,adult,32 года,Корь метадата.xlsx
-КА1_025,healthy,True,adult,42 года,Корь метадата.xlsx
-КА1_034,measles,False,child,4 года,Корь метадата.xlsx
-КА1_059,measles,False,adult,20 лет,Корь метадата.xlsx
-КВ1_030,measles,False,child,1 год 7 мес,Корь метадата.xlsx
-КВ1_057,measles,False,adult,47 лет,Корь метадата.xlsx
-КД1_031,measles,False,child,2 года 11 мес,Корь метадата.xlsx
-КИ1_027,measles,False,child,1 год 3 мес,Корь метадата.xlsx
-КК1_058,measles,False,adult,18 лет,Корь метадата.xlsx
-КН1_028,measles,False,child,5 лет,Корь метадата.xlsx
-КП1_064,healthy,True,child,3 года,Корь метадата.xlsx
-КУ1_022,measles,False,child,4 года,Корь метадата.xlsx
-КУ1_048,measles,False,child,4 года,Корь метадата.xlsx
-КЮ1_029,measles,False,child,4 года,Корь метадата.xlsx
-ЛВ1_061,healthy,True,child,1 год,Корь метадата.xlsx
-ММ1_033,measles,False,adult,16 лет,Корь метадата.xlsx
-МО1_063,measles,False,adult,20 лет,Корь метадата.xlsx
-МР1_038,measles,False,adult,33 года,Корь метадата.xlsx
-МР1_053,measles,False,child,5 лет,Корь метадата.xlsx
-МС1_020,measles,False,adult,22 года,Корь метадата.xlsx
-МС1_052,measles,False,adult,7 лет,Корь метадата.xlsx
-НЛ1_043,measles,False,adult,40 лет,Корь метадата.xlsx
-ОЛ1_018,measles,False,adult,39 лет,Корь метадата.xlsx
-ОР1_037,measles,False,adult,19 лет,Корь метадата.xlsx
-ПВ1_014,measles,False,adult,15 лет,Корь метадата.xlsx
-ПИ1_015,measles,False,adult,11 лет,Корь метадата.xlsx
-ПЛ1_032,healthy,True,adult,53 года,Корь метадата.xlsx
-ПМ1_009,measles,False,adult,23 года,Корь метадата.xlsx
-РС1_076,measles,False,adult,20 лет,Корь метадата.xlsx
-РЯ1_069,measles,False,adult,36 лет,Корь метадата.xlsx
-СА1_013,measles,False,adult,47 лет,Корь метадата.xlsx
-СА1_019,measles,False,adult,20 лет,Корь метадата.xlsx
-СА1_024,healthy,True,adult,18 лет,Корь метадата.xlsx
-СА1_046,healthy,True,adult,48 лет,Корь метадата.xlsx
-СД1_047,measles,False,adult,18 лет,Корь метадата.xlsx
-СМ1_011,measles,False,adult,19 лет,Корь метадата.xlsx
-СМ1_021,healthy,True,adult,18 лет,Корь метадата.xlsx
-ТД1_072,measles,False,adult,22 года,Корь метадата.xlsx
-ТТ1_040,measles,False,adult,21 год,Корь метадата.xlsx
-ТУ1_010,healthy,True,adult,27 лет,Корь метадата.xlsx
-УМ1_075,measles,False,adult,19 лет,Корь метадата.xlsx
-ФН1_067,measles,False,adult,53 года,Корь метадата.xlsx
-ФО1_017,measles,False,adult,16 лет,Корь метадата.xlsx
-ФО1_019,unknown,False,unknown,,unresolved sequencing label
-ХМ1_045,measles,False,adult,30 лет,Корь метадата.xlsx
-ЦА1_044,measles,False,adult,6 лет,Корь метадата.xlsx
-ШГ1_016,measles,False,adult,13 лет,Корь метадата.xlsx
-ШК1_023,measles,False,adult,9 лет,Корь метадата.xlsx
-ШЭ1_056,measles,False,adult,19 лет,Корь метадата.xlsx
-ШЮ1_026,measles,False,adult,38 лет,Корь метадата.xlsx
-ШЮ1_039,measles,False,adult,53 года,Корь метадата.xlsx
-ЭГ1_042,measles,False,adult,43 года,Корь метадата.xlsx
+patient_id,disease_status,age_text,age_group,metadata_source
+CGIMU_N1,healthy,25+ лет,adult,legacy corrected metadata
+CGIMU_N2,healthy,25+ лет,adult,legacy corrected metadata
+CGIMU_N3,healthy,25+ лет,adult,legacy corrected metadata
+CGIMU_N4,healthy,25+ лет,adult,legacy corrected metadata
+CGIMU_N5,healthy,25+ лет,adult,legacy corrected metadata
+CGIMU_N6,healthy,25+ лет,adult,legacy corrected metadata
+CGIMU_N7,healthy,25+ лет,adult,legacy corrected metadata
+АА1_051,healthy,62 года,adult,current study metadata
+АА1_073,measles,2 года,child,current study metadata
+АЕ1_035,healthy,5 мес,child,current study metadata
+АЖ1_050,healthy,30 лет,adult,current study metadata
+АУ1_054,measles,19 лет,adult,current study metadata
+БА1_002,measles,7 лет 4 месяца,child,legacy corrected metadata
+БА1_071,measles,37 лет,adult,current study metadata
+БД1_062,measles,2 года,child,current study metadata
+БМ1_074,measles,2 года,child,current study metadata
+ВА1_060,healthy,1 год 8 месяцев,child,current study metadata
+ВА1_068,measles,8 лет,child,current study metadata
+ВС1_065,measles,5 лет,child,current study metadata
+ВС1_066,measles,1 год,child,current study metadata
+ГА1_003,measles,1 год 6 месяцев ,child,legacy corrected metadata
+ДД1_070,measles,22 года,adult,current study metadata
+ЕТ1_036,measles,38 лет,adult,current study metadata
+ИМ1_005,measles,2 года 9 месяцев,child,legacy corrected metadata
+ИМ1_049,measles,19 лет,adult,current study metadata
+ИХ1_055,measles,32 года,adult,current study metadata
+КА1_025,healthy,42 года,adult,current study metadata
+КА1_034,measles,4 года,child,current study metadata
+КА1_059,measles,20 лет,adult,current study metadata
+КВ1_030,measles,1 год 7 месяцев,child,current study metadata
+КВ1_057,measles,47 лет,adult,current study metadata
+КД1_031,measles,2 года 11 месяцев,child,current study metadata
+КИ1_027,measles,1 год 3 месяцев,child,current study metadata
+КК1_058,measles,18 лет,adult,current study metadata
+КН1_028,measles,5 лет,child,current study metadata
+КП1_064,healthy,3 года,child,current study metadata
+КУ1_022,measles,4 года,child,current study metadata
+КУ1_048,measles,4 года,child,current study metadata
+КЮ1_029,measles,4 года,child,current study metadata
+ЛВ1_061,healthy,1 год,child,current study metadata
+ММ1_033,measles,16 лет,child,current study metadata
+МО1_063,measles,20 лет,adult,current study metadata
+МР1_001,measles,0 лет 4 месяца 10 дней,child,legacy corrected metadata
+МР1_038,measles,33 года,adult,current study metadata
+МР1_053,measles,5 лет,child,current study metadata
+МС1_020,measles,22 года,adult,current study metadata
+МС1_052,measles,7 лет,child,current study metadata
+НЛ1_043,measles,40 лет,adult,current study metadata
+ОЛ1_018,measles,39 лет,adult,current study metadata
+ОР1_037,measles,19 лет,adult,current study metadata
+ПВ1_014,measles,15 лет,child,current study metadata
+ПИ1_006,measles,25 лет,adult,legacy corrected metadata
+ПИ1_015,measles,11 лет,child,current study metadata
+ПЛ1_032,healthy,53 года,adult,current study metadata
+ПМ1_009,measles,23 года,adult,current study metadata
+РС1_076,measles,20 лет,adult,current study metadata
+РЯ1_069,measles,36 лет,adult,current study metadata
+СА1_013,measles,47 лет,adult,current study metadata
+СА1_019,measles,20 лет,adult,current study metadata
+СА1_024,healthy,18 лет,adult,current study metadata
+СА1_046,healthy,48 лет,adult,current study metadata
+СД1_047,measles,18 лет,adult,current study metadata
+СМ1_011,measles,19 лет,adult,current study metadata
+СМ1_021,healthy,18 лет,adult,current study metadata
+СС1_007,measles,1 год 8 месяцев,child,legacy corrected metadata
+ТД1_072,measles,22 года,adult,current study metadata
+ТТ1_040,measles,21 год,adult,current study metadata
+ТУ1_010,healthy,27 лет,adult,current study metadata
+УМ1_075,measles,19 лет,adult,current study metadata
+ФН1_067,measles,53 года,adult,current study metadata
+ФО1_017,measles,16 лет,child,current study metadata
+ФО1_019,unknown,—,unknown,current study metadata
+ХИ1_004,measles,1 год 8 месяцев,child,legacy corrected metadata
+ХМ1_045,measles,30 лет,adult,current study metadata
+ЦА1_044,measles,6 лет,child,current study metadata
+ШГ1_016,measles,13 лет,child,current study metadata
+ШЕ1_008,measles,9 лет 4 месяца,child,legacy corrected metadata
+ШК1_023,measles,9 лет,child,current study metadata
+ШЭ1_056,measles,19 лет,adult,current study metadata
+ШЮ1_026,measles,38 лет,adult,current study metadata
+ШЮ1_039,measles,53 года,adult,current study metadata
+ЭГ1_042,measles,43 года,adult,current study metadata
