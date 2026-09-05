@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+"""Prepare the authoritative patient level TRB repertoires
+
+The final analysis uses config analysis_metadata csv as the biological source of truth
+Quality control is applied per sequencing library before patient level aggregation
+When several accepted libraries belong to the same patient and clinical point their
+within library clonotype frequencies are averaged so that no deeper library receives
+extra weight
+"""
 from pathlib import Path
 import os
 import warnings
@@ -9,50 +18,60 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 ROOT = Path(os.environ.get("MEASLES_REPO", Path.cwd())).resolve()
 RESULTS = ROOT / "results"
-FIGURES = ROOT / "figures"
+CURRENT = RESULTS / "current"
+CONFIG = ROOT / "config"
 RESULTS.mkdir(exist_ok=True)
-FIGURES.mkdir(exist_ok=True)
-SEED = 1031
-PILOT = os.environ.get("MEASLES_PILOT", "0") == "1"
+CURRENT.mkdir(parents=True, exist_ok=True)
 
-manifest_path = RESULTS / "sample_manifest_resolved.csv"
-if not manifest_path.exists():
-    raise FileNotFoundError("Run notebook 00 first: results/sample_manifest_resolved.csv is missing.")
+QC_MIN_PRODUCTIVE_CLONOTYPES = 4400
+EXPANDED_FRACTION = 0.001
 
-manifest = pd.read_csv(manifest_path)
-for col in ["include", "is_control", "fastq_ready"]:
-    if col in manifest.columns:
-        manifest[col] = manifest[col].astype(str).str.lower().isin(["true", "1", "yes"])
+manifest = pd.read_csv(CONFIG / "sample_manifest.csv")
+meta = pd.read_csv(CONFIG / "analysis_metadata.csv")
 
-manifest["analysis_timepoint"] = pd.to_numeric(manifest["analysis_timepoint"], errors="coerce")
+for col in ["include", "is_control"]:
+    manifest[col] = manifest[col].astype(str).str.lower().isin(["true", "1", "yes"])
+meta["passes_qc_4400"] = meta["passes_qc_4400"].astype(str).str.lower().isin(["true", "1", "yes"])
+for col in ["productive_trb_reads", "productive_trb_clonotypes", "largest_clone_percent"]:
+    meta[col] = pd.to_numeric(meta[col], errors="coerce")
 
-# Patient identity is the FULL biological code between the sequencing index and
-# the final time-point suffix. Examples:
-#   15_CA1_013.1 and 19_CA1_013.2 -> the same patient CA1_013
-#   22_CA1_017.1                  -> a different patient CA1_017
-# The manifest already stores the full biological code in patient_id.
-manifest["source_patient_id"] = manifest["patient_id"].astype(str).str.strip()
-manifest["patient_id"] = manifest["source_patient_id"]
-manifest[[
-    "library_id", "source_patient_id", "patient_id", "analysis_timepoint",
-    "age_group", "disease_status"
-]].to_csv(RESULTS / "patient_id_mapping.csv", index=False)
+joined = manifest.merge(
+    meta,
+    on=["library_id", "patient_id", "clinical_timepoint", "disease_status", "age_group", "batch"],
+    how="outer",
+    suffixes=("_manifest", ""),
+    indicator=True,
+)
+if not joined["_merge"].eq("both").all():
+    bad = joined.loc[~joined["_merge"].eq("both"), ["library_id", "_merge"]]
+    raise RuntimeError("Manifest and analysis metadata are inconsistent\n" + bad.to_string(index=False))
 
+joined["analysis_include_final"] = (
+    joined["include"]
+    & joined["passes_qc_4400"]
+    & joined["clinical_timepoint"].isin(["CONTROL", "T1", "T2", "T3"])
+    & joined["disease_status"].isin(["healthy", "measles"])
+)
+joined["final_exclusion_reason"] = ""
+joined.loc[~joined["include"], "final_exclusion_reason"] = joined.loc[~joined["include"], "exclusion_reason"].fillna("")
+low = joined["include"] & ~joined["passes_qc_4400"]
+joined.loc[low, "final_exclusion_reason"] = (
+    "Productive TRB clonotypes below 4400 or library level quality control failure"
+)
 
-def stage_from_row(row):
-    if bool(row["is_control"]):
-        return "healthy"
-    tp = row["analysis_timepoint"]
-    if tp == 1:
-        return "acute"
-    if tp == 2:
-        return "recovery"
-    if tp in (3, 4):
-        return "follow_up"
-    return "unknown"
+# Controls have no longitudinal study point
+bad_controls = joined[joined["is_control"] & ~joined["clinical_timepoint"].eq("CONTROL")]
+if not bad_controls.empty:
+    raise RuntimeError("Healthy controls must use CONTROL only")
+if joined["clinical_timepoint"].astype(str).eq("T0").any():
+    raise RuntimeError("T0 does not exist in this study")
 
+# Explicit resolved biological repeat
+rep = joined[joined["replicate_group"].fillna("").eq("БА1_071_T2")]
+if set(rep["library_id"]) != {"new_106", "new_111"} or not rep["analysis_include_final"].all():
+    raise RuntimeError("БА1_071 T2 replicate definition is incomplete")
 
-manifest["stage"] = manifest.apply(stage_from_row, axis=1)
+joined.to_csv(CURRENT / "sample_metadata_current.csv", index=False)
 
 
 def pick_col(df, candidates):
@@ -64,22 +83,17 @@ def pick_col(df, candidates):
 
 def clean_gene(value):
     if pd.isna(value):
-        return np.nan
-    text = str(value).split(",")[0].strip()
-    text = text.split("(")[0].strip()
-    text = text.split("*")[0].strip()
-    return text if text else np.nan
+        return ""
+    text = str(value).split(",")[0].split("(")[0].split("*")[0].strip()
+    return text
 
 
-rows = []
-selected_manifest = manifest[(manifest["include"]) & (manifest["fastq_ready"])].copy()
-if PILOT:
-    pilot_ids = ["new_10", "new_11", "new_12", "legacy_UDP0107", "legacy_UDP0108"]
-    selected_manifest = selected_manifest[selected_manifest.library_id.isin(pilot_ids)]
-
-for r in selected_manifest.itertuples(index=False):
+library_rows = []
+for r in joined.itertuples(index=False):
     path = RESULTS / "clonotypes" / f"{r.library_id}.tsv"
     if not path.exists():
+        if r.analysis_include_final:
+            raise FileNotFoundError(f"Missing clonotype table for included library {r.library_id}")
         continue
     df = pd.read_csv(path, sep="\t")
     aa_col = pick_col(df, ["aaSeqCDR3", "cdr3aa", "cdr3_aa"])
@@ -87,140 +101,112 @@ for r in selected_manifest.itertuples(index=False):
     v_col = pick_col(df, ["allVHitsWithScore", "bestVHit", "vGene", "v_call"])
     j_col = pick_col(df, ["allJHitsWithScore", "bestJHit", "jGene", "j_call"])
     if aa_col is None or count_col is None:
-        raise ValueError(f"Cannot identify CDR3/count columns in {path.name}: {list(df.columns)}")
-
+        raise ValueError(f"Cannot identify CDR3 or count columns in {path.name}")
     small = pd.DataFrame({
         "library_id": r.library_id,
         "patient_id": r.patient_id,
-        "source_patient_id": r.source_patient_id,
-        "age_group": r.age_group,
-        "stage": r.stage,
-        "analysis_timepoint": r.analysis_timepoint,
-        "batch": r.batch,
+        "clinical_timepoint": r.clinical_timepoint,
         "disease_status": r.disease_status,
-        "is_control": bool(r.is_control),
+        "age_group": r.age_group,
+        "batch": r.batch,
+        "analysis_include_final": bool(r.analysis_include_final),
         "cdr3aa": df[aa_col].astype(str),
-        "count": pd.to_numeric(df[count_col], errors="coerce").fillna(0),
-        "v_gene": df[v_col].map(clean_gene) if v_col else np.nan,
-        "j_gene": df[j_col].map(clean_gene) if j_col else np.nan,
+        "count": pd.to_numeric(df[count_col], errors="coerce").fillna(0.0),
+        "v_gene": df[v_col].map(clean_gene) if v_col else "",
+        "j_gene": df[j_col].map(clean_gene) if j_col else "",
     })
-    small = small[
-        small["cdr3aa"].notna()
-        & small["cdr3aa"].ne("nan")
-        & small["count"].gt(0)
-    ].copy()
-    rows.append(small)
+    small = small[(small["cdr3aa"] != "nan") & (small["cdr3aa"] != "") & (small["count"] > 0)].copy()
+    library_rows.append(small)
 
-if not rows:
-    raise RuntimeError("No MiXCR TRB export tables were found. Run notebook 00 first.")
+if not library_rows:
+    raise RuntimeError("No TRB clonotype tables were found")
 
-library_clones = pd.concat(rows, ignore_index=True)
+library_clones = pd.concat(library_rows, ignore_index=True)
 library_clones.to_csv(RESULTS / "library_trb_clonotypes.csv", index=False)
 
-# Sum only libraries that resolve to the same biological patient AND the same
-# analysis time point. This handles duplicate/technical libraries without ever
-# merging different longitudinal observations such as CA1_013.1 and CA1_013.2.
-group_keys = ["patient_id", "analysis_timepoint", "stage", "cdr3aa"]
-best_annotation = (
-    library_clones.sort_values("count", ascending=False)
-    .drop_duplicates(group_keys)
-    [group_keys + ["v_gene", "j_gene", "age_group", "disease_status", "is_control"]]
+# Collapse duplicated aaV rows within each library before normalization
+lib = (
+    library_clones[library_clones["analysis_include_final"]]
+    .groupby(
+        ["library_id", "patient_id", "clinical_timepoint", "disease_status", "age_group", "batch", "cdr3aa", "v_gene"],
+        as_index=False,
+    )["count"].sum()
 )
-counts = library_clones.groupby(group_keys, as_index=False, dropna=False)["count"].sum()
-clones = counts.merge(best_annotation, on=group_keys, how="left")
+lib_totals = lib.groupby("library_id", as_index=False)["count"].sum().rename(columns={"count": "library_total"})
+lib = lib.merge(lib_totals, on="library_id", how="left")
+lib["library_fraction"] = lib["count"] / lib["library_total"]
 
-# Controls do not have clinical time points. Cases use an explicit T1/T2/T3 key.
-def make_sample_id(row):
-    if bool(row["is_control"]):
-        return f"{row['patient_id']}__healthy"
-    tp = row["analysis_timepoint"]
-    if pd.notna(tp):
-        return f"{row['patient_id']}__T{int(tp)}"
-    return f"{row['patient_id']}__unknown"
+# For every patient and clinical point average normalized frequencies over accepted libraries
+point_keys = ["patient_id", "clinical_timepoint", "disease_status", "age_group"]
+point_libraries = (
+    lib[point_keys + ["library_id", "library_total"]]
+    .drop_duplicates()
+    .groupby(point_keys, as_index=False)
+    .agg(n_replicate_libraries=("library_id", "nunique"), mean_library_reads=("library_total", "mean"))
+)
 
-
-clones["sample_id"] = clones.apply(make_sample_id, axis=1)
-clones.to_csv(RESULTS / "combined_trb_clonotypes.csv", index=False)
-print("Biological samples:", clones["sample_id"].nunique())
-print("Biological patients:", clones["patient_id"].nunique())
-print("Unique CDR3β rows:", len(clones))
-
-
-def shannon_from_counts(counts):
-    counts = np.asarray(counts, dtype=float)
-    counts = counts[counts > 0]
-    if counts.size == 0:
-        return np.nan
-    p = counts / counts.sum()
-    return float(-(p * np.log(p)).sum())
-
-
-def rarefy_counts(counts, depth, rng):
-    """Downsample reads WITHOUT replacement to a common sequencing depth."""
-    counts = np.rint(np.asarray(counts, dtype=float)).astype(np.int64)
-    counts[counts < 0] = 0
-    total = int(counts.sum())
-    if total < depth or depth <= 0:
-        return None
-    if total == depth:
-        return counts.copy()
-    return rng.multivariate_hypergeometric(counts, int(depth))
+freq = (
+    lib.groupby(point_keys + ["cdr3aa", "v_gene"], as_index=False)
+    .agg(sum_library_fraction=("library_fraction", "sum"))
+    .merge(point_libraries, on=point_keys, how="left")
+)
+freq["fraction"] = freq["sum_library_fraction"] / freq["n_replicate_libraries"]
+# Numerical guard, although averaging normalized libraries already sums to one
+norm = freq.groupby(point_keys)["fraction"].transform("sum")
+freq["fraction"] = np.where(norm > 0, freq["fraction"] / norm, 0.0)
+freq["count"] = freq["fraction"] * freq["mean_library_reads"]
+freq["expanded"] = freq["fraction"] >= EXPANDED_FRACTION
+freq["sample_id"] = np.where(
+    freq["clinical_timepoint"].eq("CONTROL"),
+    freq["patient_id"] + "__CONTROL",
+    freq["patient_id"] + "__" + freq["clinical_timepoint"],
+)
+combined = freq[[
+    "sample_id", "patient_id", "clinical_timepoint", "disease_status", "age_group",
+    "cdr3aa", "v_gene", "count", "fraction", "expanded", "n_replicate_libraries", "mean_library_reads"
+]].copy()
+combined.to_csv(RESULTS / "combined_trb_clonotypes.csv", index=False)
 
 
-sample_totals = clones.groupby("sample_id")["count"].sum().sort_values()
-if len(sample_totals) >= 3:
-    # 10th percentile keeps approximately 90% of samples while limiting depth bias.
-    rarefaction_depth = int(max(1, np.floor(np.quantile(sample_totals, 0.10))))
-else:
-    rarefaction_depth = int(max(1, sample_totals.min()))
-
-rng = np.random.default_rng(SEED)
-diversity_rows = []
-for sample_id, sdf in clones.groupby("sample_id"):
-    raw_counts = sdf["count"].to_numpy(dtype=float)
-    total = int(np.rint(raw_counts.sum()))
-    rare = rarefy_counts(raw_counts, rarefaction_depth, rng)
-    if rare is None:
-        richness = np.nan
-        shannon = np.nan
-        hill_q1 = np.nan
-        rarefied_top10_fraction = np.nan
-    else:
-        richness = int((rare > 0).sum())
-        shannon = shannon_from_counts(rare)
-        hill_q1 = float(np.exp(shannon)) if np.isfinite(shannon) else np.nan
-        rarefied_top10_fraction = (
-            float(np.sort(rare)[::-1][:10].sum() / rare.sum()) if rare.sum() > 0 else np.nan
-        )
-
-    sorted_counts = np.sort(raw_counts)[::-1]
-    top10_fraction = float(sorted_counts[:10].sum() / raw_counts.sum()) if raw_counts.sum() > 0 else np.nan
-    meta = sdf.iloc[0]
-    diversity_rows.append({
-        "sample_id": sample_id,
-        "patient_id": meta.patient_id,
-        "age_group": meta.age_group,
-        "stage": meta.stage,
-        "analysis_timepoint": meta.analysis_timepoint,
-        "disease_status": meta.disease_status,
-        "is_control": bool(meta.is_control),
-        "productive_trb_reads": total,
-        "raw_richness": int(sdf["cdr3aa"].nunique()),
-        "rarefaction_depth": rarefaction_depth,
-        "included_in_rarefaction": bool(total >= rarefaction_depth),
-        "rarefied_richness": richness,
+def repertoire_metrics(z):
+    p = z["fraction"].to_numpy(float)
+    p = p[p > 0]
+    richness = int(len(p))
+    shannon = float(-(p * np.log(p)).sum()) if richness else np.nan
+    clonality = float(1.0 - shannon / np.log(richness)) if richness > 1 else np.nan
+    top10 = float(np.sort(p)[::-1][:10].sum()) if richness else np.nan
+    exp_mask = z["fraction"] >= EXPANDED_FRACTION
+    expanded_fraction = float(z.loc[exp_mask, "fraction"].sum())
+    return pd.Series({
+        "richness": richness,
         "shannon": shannon,
-        "hill_q1": hill_q1,
-        "rarefied_top10_fraction": rarefied_top10_fraction,
-        "top10_fraction": top10_fraction,
+        "clonality": clonality,
+        "top10_fraction": top10,
+        "n_expanded_clonotypes": int(exp_mask.sum()),
+        "expanded_read_fraction": expanded_fraction,
+        "n_replicate_libraries": int(z["n_replicate_libraries"].iloc[0]),
+        "mean_library_reads": float(z["mean_library_reads"].iloc[0]),
     })
 
-diversity = pd.DataFrame(diversity_rows)
-diversity.to_csv(RESULTS / "diversity_metrics.csv", index=False)
-print("Common rarefaction depth:", rarefaction_depth)
-print(
-    "Samples retained for normalized diversity:",
-    int(diversity.included_in_rarefaction.sum()),
-    "/",
-    len(diversity),
+metric_rows = []
+for keys, z in combined.groupby(["sample_id", "patient_id", "clinical_timepoint", "disease_status", "age_group"], sort=False):
+    rec = dict(zip(["sample_id", "patient_id", "clinical_timepoint", "disease_status", "age_group"], keys))
+    rec.update(repertoire_metrics(z).to_dict())
+    metric_rows.append(rec)
+metrics = pd.DataFrame(metric_rows)
+metrics["expanded_threshold_fraction"] = EXPANDED_FRACTION
+metrics.to_csv(RESULTS / "diversity_metrics.csv", index=False)
+
+# A compact audit of the biological observation counts
+cohort = (
+    metrics.groupby(["age_group", "clinical_timepoint"], as_index=False)
+    .agg(n_patient_observations=("patient_id", "nunique"))
 )
+cohort.to_csv(CURRENT / "cohort_counts.csv", index=False)
+
+print(f"Final library QC threshold: {QC_MIN_PRODUCTIVE_CLONOTYPES} productive TRB clonotypes")
+print(f"Expanded clone threshold: {100 * EXPANDED_FRACTION:.2f} percent of productive TRB reads")
+print(f"Included sequencing libraries: {int(joined.analysis_include_final.sum())}")
+print(f"Biological patients: {joined.loc[joined.analysis_include_final, 'patient_id'].nunique()}")
+print(f"Patient timepoint observations: {metrics.shape[0]}")
+print("БА1_071 T2 libraries are averaged after within library normalization")
