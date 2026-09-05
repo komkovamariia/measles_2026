@@ -1,0 +1,1 @@
+Binary Excel metadata is stored as config/analysis_metadata.csv for executable use. The corresponding authoritative workbook is maintained outside the repository binary path in this connector session.
