@@ -1,23 +1,27 @@
-# Validation notes
+# Repository validation
 
-The repository follows the same practical reproducibility ideas used in `mice_transplant_2025`, while keeping the measles workflow much smaller.
+Run
 
-Before Slurm submission, `scripts/validate_repository.py` checks:
+```bash
+python scripts/validate_repository.py
+```
 
-- all required source files;
-- clean JSON notebooks with unique cell IDs;
-- Python syntax of every script;
-- exactly 96 new study-table records and 16 legacy UDP records;
-- full patient identifiers, including the distinction between `СА1_013` and `СА1_017`;
-- sequencing-index and `.1/.2/.3` timepoint consistency;
-- the new healthy-control mapping;
-- legacy UDP0097-UDP0105 case and UDP0106-UDP0112 control rules;
-- UDP0108 exclusion from biological inference;
-- pinned Python/MiXCR/matplotlib-venn environment;
-- required preprocessing and longitudinal-analysis logic.
+The validator checks
 
-During the real run, preprocessing additionally checks the filesystem. Every new included sample must have four complete R1/R2 lane pairs L001-L004. Every included legacy sample must be found. A full run stops on missing input instead of producing a partial result set.
+- 112 sequencing libraries are represented
+- 96 new libraries and 16 legacy libraries are present
+- T0 is absent
+- controls use CONTROL only
+- child means age below 18 years
+- adult means age 18 years and older
+- final library QC threshold is 4400 productive TRB clonotypes
+- final cohort contains 78 unique patients, 33 children and 45 adults
+- cross sectional counts are 4 controls, 27 T1 and 8 T2 for children
+- cross sectional counts are 13 controls, 29 T1 and 19 T2 for adults
+- paired T1 and T2 counts are 6 children and 16 adults
+- `new_111` is included as a T2 biological repeat of `new_106`
+- the old age 6 reporting script is absent
+- expanded clone analysis uses the 0.10 percent threshold
+- the corrected legacy patient identities are preserved
 
-After notebook execution, the runner verifies the required result tables, figures 01-10 and patient aaV Venn outputs.
-
-The final remaining external prerequisites are the real Aldan-3 FASTQ files, the correct old `pe150_res` location and a valid MiXCR license for the user account.
+The validator checks repository configuration and analysis contracts. It does not replace a successful analysis run on the cluster
