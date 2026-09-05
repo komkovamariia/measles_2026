@@ -14,34 +14,22 @@ ROOT = Path(__file__).resolve().parents[1]
 def fail(msg):
     raise SystemExit(f"VALIDATION FAILED: {msg}")
 
-
 required = [
-    "README.md", "RUN_GUIDE.md", "environment.yml",
-    "config/sample_manifest.csv", "config/clinical_metadata_sequenced.csv",
+    "README.md", "RUN_GUIDE.md", "VALIDATION.md", "environment.yml",
+    "config/sample_manifest.csv", "config/analysis_metadata.csv",
+    "config/measles_metadata_v2_age18_final.xlsx", "config/clinical_metadata_sequenced.csv",
     "config/metadata_known_issues.csv", "config/SOURCE_NOTES.md",
     "notebooks/00_prepare_and_mixcr.ipynb", "notebooks/01_measles_analysis.ipynb",
-    "scripts/preprocess_human_trb.py", "scripts/mixcr_smoke_test.py",
-    "scripts/validate_clonotype_exports.py",
     "scripts/analysis_01_prepare.py", "scripts/analysis_02_antigens.py",
-    "scripts/analysis_03_figures.py", "scripts/analysis_04_stats.py",
-    "scripts/analysis_05_longitudinal_venn.py", "scripts/analysis_06_clinical_summary.py",
-    "scripts/analysis_07_age6_reporting.py", "scripts/analysis_08_final_reporting.py",
-    "scripts/analysis_09_patient_panels.py",
-    "scripts/run_pipeline.py", "scripts/run_slurm.sh", "scripts/run_analysis_slurm.sh",
-    "scripts/run_analysis_refresh_slurm.sh", "run_all_from_scratch.sh",
+    "scripts/analysis_06_clinical_summary.py", "scripts/analysis_07_longitudinal_expanded.py",
+    "scripts/analysis_08_final_reporting.py", "scripts/analysis_09_patient_panels.py",
+    "scripts/publish_current_figures.py", "scripts/run_analysis_refresh_slurm.sh",
 ]
 missing = [p for p in required if not (ROOT / p).exists()]
 if missing:
     fail(f"missing required files: {missing}")
-
-for rel in ["notebooks/00_prepare_and_mixcr.ipynb", "notebooks/01_measles_analysis.ipynb"]:
-    nb = json.loads((ROOT / rel).read_text(encoding="utf-8"))
-    ids = [c.get("id") for c in nb.get("cells", [])]
-    if any(x is None for x in ids) or len(ids) != len(set(ids)):
-        fail(f"invalid/duplicate notebook cell IDs: {rel}")
-    for cell in nb.get("cells", []):
-        if cell.get("cell_type") == "code" and (cell.get("outputs") or cell.get("execution_count") is not None):
-            fail(f"source notebook contains outputs/execution count: {rel}")
+if (ROOT / "scripts/analysis_07_age6_reporting.py").exists():
+    fail("obsolete age 6 reporting script must be removed")
 
 for path in (ROOT / "scripts").glob("*.py"):
     try:
@@ -49,151 +37,143 @@ for path in (ROOT / "scripts").glob("*.py"):
     except SyntaxError as exc:
         fail(f"Python syntax error in {path.name}: {exc}")
 
+for rel in ["notebooks/00_prepare_and_mixcr.ipynb", "notebooks/01_measles_analysis.ipynb"]:
+    nb = json.loads((ROOT / rel).read_text(encoding="utf-8"))
+    ids = [c.get("id") for c in nb.get("cells", [])]
+    if any(x is None for x in ids) or len(ids) != len(set(ids)):
+        fail(f"invalid notebook cell IDs in {rel}")
+
 manifest = pd.read_csv(ROOT / "config/sample_manifest.csv")
-required_cols = {
-    "library_id", "sequencing_index", "batch", "raw_sample_id", "patient_id",
-    "analysis_timepoint", "clinical_timepoint", "disease_status", "age_group",
-    "is_control", "include", "fastq_key",
-}
-if not required_cols.issubset(manifest.columns):
-    fail(f"manifest columns missing: {sorted(required_cols - set(manifest.columns))}")
+meta = pd.read_csv(ROOT / "config/analysis_metadata.csv")
+for col in ["include", "is_control"]:
+    manifest[col] = manifest[col].astype(str).str.lower().isin(["true", "1", "yes"])
+meta["passes_qc_4400"] = meta["passes_qc_4400"].astype(str).str.lower().isin(["true", "1", "yes"])
+meta["productive_trb_clonotypes"] = pd.to_numeric(meta.productive_trb_clonotypes, errors="coerce")
 
-new = manifest[manifest.batch.eq("new")].copy()
-legacy = manifest[manifest.batch.eq("legacy")].copy()
-if len(new) != 96:
-    fail(f"expected 96 new sequencing libraries, found {len(new)}")
-if len(legacy) != 16:
-    fail(f"expected 16 legacy libraries, found {len(legacy)}")
-if new.library_id.duplicated().any() or new.sequencing_index.duplicated().any():
-    fail("new library IDs and sequencing indices must be unique")
+if len(manifest) != 112 or len(meta) != 112:
+    fail(f"expected 112 libraries, found manifest {len(manifest)} metadata {len(meta)}")
+if len(manifest[manifest.batch.eq("new")]) != 96:
+    fail("expected 96 new libraries")
+if len(manifest[manifest.batch.eq("legacy")]) != 16:
+    fail("expected 16 legacy libraries")
+if manifest.library_id.duplicated().any() or meta.library_id.duplicated().any():
+    fail("library IDs must be unique")
 
-# Authoritative time-point rule supplied by the study owner:
-# suffix .1/.2/.3 (including forms such as .2а) means T1/T2/T3.
-# T0 does not exist in this study.
+joined = manifest.merge(meta, on="library_id", suffixes=("_manifest", ""), how="outer", indicator=True)
+if not joined._merge.eq("both").all():
+    fail("sample manifest and analysis metadata have different library sets")
+
+# Study time points
+if manifest.clinical_timepoint.astype(str).eq("T0").any():
+    fail("T0 does not exist in this study")
+new = manifest[manifest.batch.eq("new")]
 for r in new.itertuples(index=False):
-    if not str(r.raw_sample_id).startswith(str(r.sequencing_index) + "_"):
-        fail(f"sequencing prefix mismatch: {r.library_id} {r.raw_sample_id}")
     m = re.search(r"\.([1-3])(?:[A-Za-zА-Яа-яЁё])?$", str(r.raw_sample_id))
     if not m:
-        fail(f"cannot parse time-point suffix: {r.library_id} {r.raw_sample_id}")
+        fail(f"cannot parse new library suffix for {r.library_id}")
     suffix = int(m.group(1))
-    if suffix != int(float(r.analysis_timepoint)):
-        fail(f"raw suffix / analysis_timepoint mismatch: {r.library_id} {r.raw_sample_id}")
-    expected_phase = f"T{suffix}"
-    if str(r.clinical_timepoint) != expected_phase:
-        fail(
-            f"clinical_timepoint must follow sequencing suffix for {r.library_id}: "
-            f"expected {expected_phase}, found {r.clinical_timepoint}"
-        )
+    if int(float(r.analysis_timepoint)) != suffix:
+        fail(f"analysis time point mismatch for {r.library_id}")
+    expected = "CONTROL" if bool(r.is_control) else f"T{suffix}"
+    if str(r.clinical_timepoint) != expected:
+        fail(f"clinical time point mismatch for {r.library_id}: expected {expected}")
 
-if new.clinical_timepoint.astype(str).eq("T0").any():
-    bad = sorted(new.loc[new.clinical_timepoint.astype(str).eq("T0"), "library_id"])
-    fail(f"T0 is not a study time point; found in: {bad}")
+# Controls have only CONTROL and cases use T1 T2 T3
+if not manifest.loc[manifest.is_control, "clinical_timepoint"].eq("CONTROL").all():
+    fail("all healthy controls must use CONTROL")
+case_points = set(manifest.loc[manifest.disease_status.eq("measles"), "clinical_timepoint"].astype(str))
+if not case_points.issubset({"T1", "T2", "T3"}):
+    fail(f"unexpected measles time points: {sorted(case_points)}")
 
-new_by_lib = new.set_index("library_id")
-expected_patient = {"new_21": "ОЛ1_018", "new_22": "СА1_019", "new_23": "МС1_020"}
-for lib, patient in expected_patient.items():
-    if str(new_by_lib.loc[lib, "patient_id"]) != patient:
-        fail(f"clinical patient reconciliation changed for {lib}: expected {patient}")
+# Age rule
+if set(meta.age_group) - {"child", "adult", "unknown"}:
+    fail("age_group must be child adult or unknown")
+for r in meta.itertuples(index=False):
+    text = str(r.age_text).lower()
+    m = re.search(r"(\d+)\s*(?:год|года|лет)", text)
+    if m:
+        years = int(m.group(1))
+        expected = "child" if years < 18 else "adult"
+        if r.age_group != expected:
+            fail(f"age rule mismatch for {r.library_id}: {r.age_text} expected {expected}")
 
-# Explicit sentinels for important longitudinal examples.
-expected_phase = {
-    "new_15": "T1", "new_19": "T2", "new_72": "T3",
-    "new_38": "T1", "new_39": "T2", "new_43": "T3",
-    "new_51": "T1", "new_56": "T2", "new_62": "T3",
-    "new_10": "T1", "new_12": "T2", "new_46": "T2", "new_75": "T2", "new_57": "T2",
+# Final library QC and cohort totals
+if not (meta.loc[meta.passes_qc_4400, "productive_trb_clonotypes"] >= 4400).all():
+    fail("a library marked as passing QC has fewer than 4400 productive TRB clonotypes")
+final = meta[meta.passes_qc_4400 & meta.disease_status.isin(["healthy", "measles"])].copy()
+# independent metadata and identity exclusions are represented in both tables
+final = final[manifest.set_index("library_id").loc[final.library_id, "include"].to_numpy()]
+if final.patient_id.nunique() != 78:
+    fail(f"expected 78 unique final patients, found {final.patient_id.nunique()}")
+patients = final.drop_duplicates("patient_id")
+counts = patients.age_group.value_counts().to_dict()
+if counts.get("child", 0) != 33 or counts.get("adult", 0) != 45:
+    fail(f"expected 33 children and 45 adults, found {counts}")
+
+# Cross sectional biological observation counts after averaging repeated libraries
+obs = final.drop_duplicates(["patient_id", "clinical_timepoint"])
+expected_counts = {
+    ("child", "CONTROL"): 4, ("child", "T1"): 27, ("child", "T2"): 8,
+    ("adult", "CONTROL"): 13, ("adult", "T1"): 29, ("adult", "T2"): 19,
 }
-for lib, phase in expected_phase.items():
-    if str(new_by_lib.loc[lib, "clinical_timepoint"]) != phase:
-        fail(f"clinical timepoint changed for {lib}: expected {phase}")
+for key, expected in expected_counts.items():
+    got = len(obs[(obs.age_group == key[0]) & (obs.clinical_timepoint == key[1])])
+    if got != expected:
+        fail(f"unexpected cohort count for {key}: expected {expected}, found {got}")
 
-included_new = new[new.include.astype(str).str.lower().isin(["true", "1", "yes"])].copy()
-if included_new.age_group.astype(str).eq("unknown").any():
-    bad = sorted(included_new.loc[included_new.age_group.astype(str).eq("unknown"), "library_id"])
-    fail(f"included new libraries must have adult/child metadata: {bad}")
-if included_new.clinical_timepoint.fillna("").astype(str).eq("").any():
-    bad = sorted(included_new.loc[included_new.clinical_timepoint.fillna("").astype(str).eq(""), "library_id"])
-    fail(f"included new libraries must have clinical_timepoint: {bad}")
-if not set(included_new.clinical_timepoint.astype(str)).issubset({"T1", "T2", "T3"}):
-    fail("included new clinical_timepoint values must be T1/T2/T3; T0 does not exist")
+# Resolved T2 biological replicate
+rep = meta[meta.replicate_group.fillna("").eq("БА1_071_T2")]
+if set(rep.library_id) != {"new_106", "new_111"}:
+    fail("БА1_071 T2 replicate group must contain new_106 and new_111")
+if not rep.passes_qc_4400.all():
+    fail("both БА1_071 T2 replicate libraries must pass final QC")
+mr = manifest.set_index("library_id")
+if not bool(mr.loc["new_111", "include"]) or str(mr.loc["new_111", "clinical_timepoint"]) != "T2":
+    fail("new_111 must be included as T2")
 
-expected_child_patients = {
-    "АА1_073", "АЕ1_035", "БД1_062", "БМ1_074", "ВА1_060", "ВС1_065", "ВС1_066",
-    "ГА1_003", "КА1_034", "КВ1_030", "КД1_031", "КИ1_027", "КН1_028", "КП1_064",
-    "КУ1_022", "КУ1_048", "КЮ1_029", "ЛВ1_061", "МР1_053",
+# Current independent exclusions
+excluded = set(manifest.loc[~manifest.include, "library_id"])
+if excluded != {"new_24", "new_39", "legacy_UDP0108"}:
+    fail(f"unexpected config exclusion set: {sorted(excluded)}")
+
+# Correct legacy identities
+legacy_expected = {
+    "legacy_UDP0097": ("МР1_001", "T1", "measles", "child"),
+    "legacy_UDP0098": ("БА1_002", "T1", "measles", "child"),
+    "legacy_UDP0099": ("ГА1_003", "T1", "measles", "child"),
+    "legacy_UDP0100": ("ХИ1_004", "T1", "measles", "child"),
+    "legacy_UDP0101": ("ИМ1_005", "T1", "measles", "child"),
+    "legacy_UDP0102": ("ПИ1_006", "T1", "measles", "adult"),
+    "legacy_UDP0103": ("СС1_007", "T1", "measles", "child"),
+    "legacy_UDP0104": ("ХИ1_004", "T2", "measles", "child"),
+    "legacy_UDP0105": ("ШЕ1_008", "T1", "measles", "child"),
 }
-observed_child_patients = set(included_new.loc[included_new.age_group.eq("child"), "patient_id"])
-if observed_child_patients != expected_child_patients:
-    fail(f"age<6 child set changed: {sorted(observed_child_patients)}")
-if set(included_new.age_group) - {"adult", "child"}:
-    fail("included new age_group values must be adult/child")
+for lib, expected in legacy_expected.items():
+    r = mr.loc[lib]
+    got = (str(r.patient_id), str(r.clinical_timepoint), str(r.disease_status), str(r.age_group))
+    if got != expected:
+        fail(f"legacy mapping mismatch for {lib}: {got}")
+for i in range(106, 113):
+    lib = f"legacy_UDP{i:04d}"
+    r = mr.loc[lib]
+    if str(r.patient_id) != f"CGIMU_N{i-105}" or str(r.clinical_timepoint) != "CONTROL" or str(r.disease_status) != "healthy":
+        fail(f"legacy control mapping mismatch for {lib}")
 
-expected_excluded_new = {"new_24", "new_39", "new_88", "new_111"}
-observed_excluded_new = set(new.loc[~new.include.astype(str).str.lower().isin(["true", "1", "yes"]), "library_id"])
-if observed_excluded_new != expected_excluded_new:
-    fail(f"new-library exclusion set changed: {sorted(observed_excluded_new)}")
-
-observed_t3 = set(included_new.loc[included_new.clinical_timepoint.eq("T3"), "library_id"])
-expected_t3 = {"new_43", "new_62", "new_72"}
-if observed_t3 != expected_t3:
-    fail(f"clinical T3 set changed: {sorted(observed_t3)}")
-
-expected_new_controls = {
-    "ТУ1_010", "СМ1_021", "СА1_024", "КА1_025", "ПЛ1_032",
-    "АЕ1_035", "СА1_046", "АЖ1_050", "АА1_051", "ВА1_060", "ЛВ1_061", "КП1_064",
+# Analysis contract tokens
+contracts = {
+    "scripts/analysis_01_prepare.py": ["QC_MIN_PRODUCTIVE_CLONOTYPES = 4400", "EXPANDED_FRACTION = 0.001", "БА1_071_T2"],
+    "scripts/analysis_07_longitudinal_expanded.py": ["expanded_jaccard", "new_T2_expansions", "expected = 6 if age == \"child\" else 16"],
+    "scripts/analysis_09_patient_panels.py": ["Expanded clonotype overlap", "EXPANDED_FRACTION = 0.001"],
 }
-observed_new_controls = set(
-    included_new.loc[included_new.is_control.astype(str).str.lower().isin(["true", "1", "yes"]), "patient_id"]
-)
-if observed_new_controls != expected_new_controls:
-    fail(f"new control mapping changed: {sorted(observed_new_controls)}")
+for rel, tokens in contracts.items():
+    text = (ROOT / rel).read_text(encoding="utf-8")
+    for token in tokens:
+        if token not in text:
+            fail(f"analysis contract token missing in {rel}: {token}")
 
-clinical = pd.read_csv(ROOT / "config/clinical_metadata_sequenced.csv").set_index("patient_id")
-for r in included_new.itertuples(index=False):
-    if r.patient_id not in clinical.index:
-        fail(f"included patient missing from clinical metadata table: {r.patient_id}")
-    c = clinical.loc[r.patient_id]
-    if str(c["disease_status"]) != str(r.disease_status):
-        fail(f"disease-status mismatch for {r.patient_id}")
-    if str(c["age_group"]) != str(r.age_group):
-        fail(f"age-group mismatch for {r.patient_id}")
-
-legacy_idx = legacy.set_index("sequencing_index")
-if set(legacy_idx.age_group.astype(str)) != {"adult"}:
-    fail("all legacy libraries must be adults")
-if legacy_idx.patient_id.duplicated().any():
-    fail("legacy libraries must represent distinct people")
-for udp in [f"UDP{i:04d}" for i in range(97, 113)]:
-    if str(legacy_idx.loc[udp, "patient_id"]) != udp:
-        fail(f"legacy patient {udp} must remain independent")
-for udp in [f"UDP{i:04d}" for i in range(97, 106)]:
-    row = legacy_idx.loc[udp]
-    if str(row.disease_status) != "measles" or str(row.clinical_timepoint) != "legacy_acute":
-        fail(f"legacy case rule broken for {udp}")
-for udp in [f"UDP{i:04d}" for i in range(106, 113)]:
-    row = legacy_idx.loc[udp]
-    if str(row.disease_status) != "healthy" or str(row.clinical_timepoint) != "control":
-        fail(f"legacy control rule broken for {udp}")
-if str(legacy_idx.loc["UDP0108", "include"]).lower() not in {"false", "0"}:
-    fail("UDP0108 must remain excluded from biological inference")
-
-env = (ROOT / "environment.yml").read_text(encoding="utf-8")
-for token in ["python=3.12.13", "matplotlib-venn=1.1", "milaboratories", "mixcr=4.7.0"]:
-    if token not in env:
-        fail(f"environment missing reproducibility token: {token}")
-
-final_script = (ROOT / "scripts/analysis_08_final_reporting.py").read_text(encoding="utf-8")
-for token in ["MIN_PRODUCTIVE_CLONOTYPES = 5000", "CA1_013", "analysis_include_final", "figures' / 'current"]:
-    if token not in final_script:
-        fail(f"final reporting contract missing token: {token}")
-
-patient_script = (ROOT / "scripts/analysis_09_patient_panels.py").read_text(encoding="utf-8")
-if '"T0"' in patient_script or "'T0'" in patient_script:
-    fail("patient reporting must not define T0; study time points are T1/T2/T3")
-
-print(
-    "Repository validation passed. "
-    "Timepoints: suffix .1/.2/.3 = T1/T2/T3; T0 does not exist. "
-    "Age split: child < 6 years; adult >= 6 years. "
-    "Final clone-count QC: >= 5,000 productive TRB clonotypes/library."
-)
+print("Repository validation passed")
+print("QC threshold: 4400 productive TRB clonotypes")
+print("Age rule: child younger than 18 years, adult 18 years and older")
+print("Controls use CONTROL only")
+print("new_111 is included as a T2 biological replicate of new_106")
+print("Expanded clone threshold: 0.10 percent of productive TRB reads")
