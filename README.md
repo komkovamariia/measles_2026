@@ -2,9 +2,9 @@
 
 This repository contains the final analysis workflow for bulk human TRB sequencing in the measles cohort
 
-The current biological metadata is stored in `config/measles_metadata_v2_age18_final.xlsx`
+The authoritative repository metadata is `config/analysis_metadata.csv`
 
-The analysis copy used by scripts is `config/analysis_metadata.csv`
+It is the analysis copy of the final reviewed metadata and includes library quality, final inclusion status, corrected biological patient identifiers, age groups and biological replicate handling
 
 ## Final cohort rules
 
@@ -77,7 +77,7 @@ New expanded clones at T2 are exported separately for exact specificity matching
 
 The two libraries are not counted as two patients or two independent T2 observations
 
-For patient level analysis each library is first normalized to clonotype frequencies. The normalized frequencies are then averaged. The resulting averaged repertoire is one T2 observation for patient БА1_071
+For patient level analysis each library is first normalized to clonotype frequencies. Missing clones receive frequency zero in the replicate where they are absent. The normalized frequencies are then averaged. The resulting averaged repertoire is one T2 observation for patient БА1_071
 
 ## Legacy cohort correction
 
@@ -127,18 +127,20 @@ patient_panel_index.csv
 
 Patient panels show complete repertoire diversity, overlap of expanded clonotypes only, fate of expanded clones from the earlier point and the largest new expansions at the later point
 
-## Refresh analysis without rerunning MiXCR
+## Refresh analysis without rerunning completed MiXCR exports
 
 ```bash
 cd ~/measles_2026
 git pull --ff-only
+eval "$(conda shell.bash hook)"
+conda activate measles-tcr-2026
 python scripts/validate_repository.py
 jid=$(sbatch --parsable scripts/run_analysis_refresh_slurm.sh)
 echo "$jid"
 tail -F "logs/refresh_slurm_${jid}.out"
 ```
 
-The refresh job reuses existing MiXCR clonotype exports
+The refresh job reuses existing MiXCR clonotype exports. If the newly accepted `new_111` export is absent, preprocessing resumes only for missing exports while valid existing exports are skipped
 
 ## Full run from raw FASTQ
 
