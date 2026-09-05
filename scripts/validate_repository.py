@@ -17,8 +17,7 @@ def fail(msg):
 required = [
     "README.md", "RUN_GUIDE.md", "VALIDATION.md", "environment.yml",
     "config/sample_manifest.csv", "config/analysis_metadata.csv",
-    "config/measles_metadata_v2_age18_final.xlsx", "config/clinical_metadata_sequenced.csv",
-    "config/metadata_known_issues.csv", "config/SOURCE_NOTES.md",
+    "config/clinical_metadata_sequenced.csv", "config/metadata_known_issues.csv", "config/SOURCE_NOTES.md",
     "notebooks/00_prepare_and_mixcr.ipynb", "notebooks/01_measles_analysis.ipynb",
     "scripts/analysis_01_prepare.py", "scripts/analysis_02_antigens.py",
     "scripts/analysis_06_clinical_summary.py", "scripts/analysis_07_longitudinal_expanded.py",
@@ -30,6 +29,8 @@ if missing:
     fail(f"missing required files: {missing}")
 if (ROOT / "scripts/analysis_07_age6_reporting.py").exists():
     fail("obsolete age 6 reporting script must be removed")
+if (ROOT / "scripts/analysis_08_final_reporting_safe.py").exists():
+    fail("obsolete compatibility wrapper must be removed")
 
 for path in (ROOT / "scripts").glob("*.py"):
     try:
@@ -42,6 +43,9 @@ for rel in ["notebooks/00_prepare_and_mixcr.ipynb", "notebooks/01_measles_analys
     ids = [c.get("id") for c in nb.get("cells", [])]
     if any(x is None for x in ids) or len(ids) != len(set(ids)):
         fail(f"invalid notebook cell IDs in {rel}")
+    for cell in nb.get("cells", []):
+        if cell.get("cell_type") == "code" and (cell.get("outputs") or cell.get("execution_count") is not None):
+            fail(f"source notebook contains outputs in {rel}")
 
 manifest = pd.read_csv(ROOT / "config/sample_manifest.csv")
 meta = pd.read_csv(ROOT / "config/analysis_metadata.csv")
@@ -63,7 +67,6 @@ joined = manifest.merge(meta, on="library_id", suffixes=("_manifest", ""), how="
 if not joined._merge.eq("both").all():
     fail("sample manifest and analysis metadata have different library sets")
 
-# Study time points
 if manifest.clinical_timepoint.astype(str).eq("T0").any():
     fail("T0 does not exist in this study")
 new = manifest[manifest.batch.eq("new")]
@@ -78,14 +81,12 @@ for r in new.itertuples(index=False):
     if str(r.clinical_timepoint) != expected:
         fail(f"clinical time point mismatch for {r.library_id}: expected {expected}")
 
-# Controls have only CONTROL and cases use T1 T2 T3
 if not manifest.loc[manifest.is_control, "clinical_timepoint"].eq("CONTROL").all():
     fail("all healthy controls must use CONTROL")
 case_points = set(manifest.loc[manifest.disease_status.eq("measles"), "clinical_timepoint"].astype(str))
 if not case_points.issubset({"T1", "T2", "T3"}):
     fail(f"unexpected measles time points: {sorted(case_points)}")
 
-# Age rule
 if set(meta.age_group) - {"child", "adult", "unknown"}:
     fail("age_group must be child adult or unknown")
 for r in meta.itertuples(index=False):
@@ -97,12 +98,11 @@ for r in meta.itertuples(index=False):
         if r.age_group != expected:
             fail(f"age rule mismatch for {r.library_id}: {r.age_text} expected {expected}")
 
-# Final library QC and cohort totals
 if not (meta.loc[meta.passes_qc_4400, "productive_trb_clonotypes"] >= 4400).all():
     fail("a library marked as passing QC has fewer than 4400 productive TRB clonotypes")
+manifest_include = manifest.set_index("library_id")["include"]
 final = meta[meta.passes_qc_4400 & meta.disease_status.isin(["healthy", "measles"])].copy()
-# independent metadata and identity exclusions are represented in both tables
-final = final[manifest.set_index("library_id").loc[final.library_id, "include"].to_numpy()]
+final = final[manifest_include.loc[final.library_id].to_numpy()]
 if final.patient_id.nunique() != 78:
     fail(f"expected 78 unique final patients, found {final.patient_id.nunique()}")
 patients = final.drop_duplicates("patient_id")
@@ -110,7 +110,6 @@ counts = patients.age_group.value_counts().to_dict()
 if counts.get("child", 0) != 33 or counts.get("adult", 0) != 45:
     fail(f"expected 33 children and 45 adults, found {counts}")
 
-# Cross sectional biological observation counts after averaging repeated libraries
 obs = final.drop_duplicates(["patient_id", "clinical_timepoint"])
 expected_counts = {
     ("child", "CONTROL"): 4, ("child", "T1"): 27, ("child", "T2"): 8,
@@ -121,7 +120,6 @@ for key, expected in expected_counts.items():
     if got != expected:
         fail(f"unexpected cohort count for {key}: expected {expected}, found {got}")
 
-# Resolved T2 biological replicate
 rep = meta[meta.replicate_group.fillna("").eq("БА1_071_T2")]
 if set(rep.library_id) != {"new_106", "new_111"}:
     fail("БА1_071 T2 replicate group must contain new_106 and new_111")
@@ -131,12 +129,10 @@ mr = manifest.set_index("library_id")
 if not bool(mr.loc["new_111", "include"]) or str(mr.loc["new_111", "clinical_timepoint"]) != "T2":
     fail("new_111 must be included as T2")
 
-# Current independent exclusions
 excluded = set(manifest.loc[~manifest.include, "library_id"])
 if excluded != {"new_24", "new_39", "legacy_UDP0108"}:
     fail(f"unexpected config exclusion set: {sorted(excluded)}")
 
-# Correct legacy identities
 legacy_expected = {
     "legacy_UDP0097": ("МР1_001", "T1", "measles", "child"),
     "legacy_UDP0098": ("БА1_002", "T1", "measles", "child"),
@@ -159,7 +155,6 @@ for i in range(106, 113):
     if str(r.patient_id) != f"CGIMU_N{i-105}" or str(r.clinical_timepoint) != "CONTROL" or str(r.disease_status) != "healthy":
         fail(f"legacy control mapping mismatch for {lib}")
 
-# Analysis contract tokens
 contracts = {
     "scripts/analysis_01_prepare.py": ["QC_MIN_PRODUCTIVE_CLONOTYPES = 4400", "EXPANDED_FRACTION = 0.001", "БА1_071_T2"],
     "scripts/analysis_07_longitudinal_expanded.py": ["expanded_jaccard", "new_T2_expansions", "expected = 6 if age == \"child\" else 16"],
@@ -172,6 +167,7 @@ for rel, tokens in contracts.items():
             fail(f"analysis contract token missing in {rel}: {token}")
 
 print("Repository validation passed")
+print("Authoritative metadata: config/analysis_metadata.csv")
 print("QC threshold: 4400 productive TRB clonotypes")
 print("Age rule: child younger than 18 years, adult 18 years and older")
 print("Controls use CONTROL only")
