@@ -2,9 +2,7 @@
 
 ## Current analysis contract
 
-The final metadata file is `config/measles_metadata_v2_age18_final.xlsx`
-
-The executable metadata table is `config/analysis_metadata.csv`
+The authoritative repository metadata is `config/analysis_metadata.csv`
 
 Quality threshold is 4400 productive TRB clonotypes per sequencing library
 
