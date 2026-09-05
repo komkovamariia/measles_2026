@@ -8,7 +8,6 @@
 #SBATCH --output=logs/refresh_slurm_%j.out
 
 set -euo pipefail
-
 ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "$ROOT"
 mkdir -p logs results figures audit_runs
@@ -21,109 +20,88 @@ elif [[ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]]; then
 elif [[ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]]; then
   source "$HOME/anaconda3/etc/profile.d/conda.sh"
 else
-  echo "ERROR: conda was not found." >&2
+  echo "ERROR: conda was not found" >&2
   exit 1
 fi
 conda activate measles-tcr-2026
-
 export MEASLES_REPO="$ROOT"
-export MEASLES_NEW_FASTQ_DIR="${MEASLES_NEW_FASTQ_DIR:-/projects/mice_transplant_2025/raw/20260817_161454/Fastq}"
-export MEASLES_LEGACY_FASTQ_DIR="${MEASLES_LEGACY_FASTQ_DIR:-/projects/mice_transplant_2025/measles/raw/pe150_res}"
 
 echo "Repository root: $ROOT"
 echo "Git commit: $(git rev-parse HEAD)"
-echo "Timepoints: .1/.2/.3 = T1/T2/T3; T0 does NOT exist"
-echo "Age split: child < 6 years; adult >= 6 years"
-echo "Final biological QC: >= 5000 productive TRB clonotypes/library"
-echo "MiXCR will NOT be rerun."
+echo "Time points: T1 T2 T3, controls use CONTROL"
+echo "Age rule: child younger than 18 years, adult 18 years and older"
+echo "Final library QC: at least 4400 productive TRB clonotypes"
+echo "Expanded clone threshold: 0.10 percent of productive TRB reads"
+echo "БА1_071 T2: new_106 and new_111 are averaged after within library normalization"
+echo "MiXCR will not be rerun"
 
-echo "Validating repository..."
 python scripts/validate_repository.py
 
-if [[ ! -s results/raw_fastq_depth.csv ]]; then
-  echo "Collecting raw FASTQ depth..."
-  python scripts/collect_fastq_depth.py --workers "${SLURM_CPUS_PER_TASK:-8}"
+# The newly resolved biological repeat new_111 must have a MiXCR export.
+# Existing exports are reused. If this one export is missing, preprocessing resumes
+# and MiXCR skips every already valid library.
+if [[ ! -s results/clonotypes/new_111.tsv ]]; then
+  echo "new_111 clonotype export is missing. Resuming preprocessing for missing exports"
+  export MEASLES_NEW_FASTQ_DIR="${MEASLES_NEW_FASTQ_DIR:-/projects/mice_transplant_2025/raw/20260817_161454/Fastq}"
+  export MEASLES_LEGACY_FASTQ_DIR="${MEASLES_LEGACY_FASTQ_DIR:-/projects/mice_transplant_2025/measles/raw/pe150_res}"
+  export MEASLES_REQUIRE_ALL_INPUTS=1
+  python scripts/preprocess_human_trb.py
 else
-  echo "Reuse results/raw_fastq_depth.csv"
+  echo "Reuse existing new_111 clonotype export"
 fi
 
-echo "Removing stale derived outputs..."
-rm -rf \
-  results/corrected \
-  results/corrected_age6 \
-  results/current \
-  figures/corrected \
-  figures/corrected_age6 \
-  figures/current \
-  figures/group \
-  figures/patients
-find figures -maxdepth 1 -type f \( -name '*.png' -o -name '*.pdf' -o -name 'CURRENT_OUTPUTS.txt' -o -name 'FIGURE_INDEX.txt' \) -delete
-mkdir -p results figures
+rm -rf results/current figures/current figures/group figures/patients
+mkdir -p results/current figures/current
 
-echo "Running analysis_01_prepare.py..."
 python scripts/analysis_01_prepare.py
-
-echo "Running analysis_02_antigens.py..."
 python scripts/analysis_02_antigens.py
-
-echo "Running analysis_06_clinical_summary.py..."
 python scripts/analysis_06_clinical_summary.py
-
-echo "Running analysis_07_age6_reporting.py..."
-python scripts/analysis_07_age6_reporting.py
-
-echo "Running final reporting with read-only NumPy compatibility fix..."
-python scripts/analysis_08_final_reporting_safe.py
-
-echo "Running analysis_09_patient_panels.py..."
+python scripts/analysis_07_longitudinal_expanded.py
+python scripts/analysis_08_final_reporting.py
 python scripts/analysis_09_patient_panels.py
-
-echo "Checking that T0 was not reintroduced downstream..."
-python - <<'PY'
-import pandas as pd
-from pathlib import Path
-p = Path('results/current/sample_metadata_current.csv')
-if not p.exists():
-    raise SystemExit(f'Missing {p}')
-df = pd.read_csv(p)
-if 'clinical_timepoint' in df.columns:
-    bad = df[df['clinical_timepoint'].astype(str).eq('T0')]
-    if not bad.empty:
-        raise SystemExit('ERROR: T0 was reintroduced downstream: ' + ', '.join(bad['library_id'].astype(str)))
-print('Downstream timepoint check passed: T1/T2/T3 only for new cohort; no T0.')
-PY
-
-echo "Publishing final figures into figures/group and figures/patients..."
 python scripts/publish_current_figures.py
 
-for f in \
-  figures/FIGURE_INDEX.txt \
-  figures/group/00_library_QC_overview.png \
-  figures/group/01_oligoclonality_case_control.png \
-  figures/group/05_T1_T2_richness.png \
-  figures/group/07_venn_and_weighted_similarity_summary.png \
-  figures/group/08_TRBV_usage_adult.png \
-  figures/group/09_TRBJ_usage_adult.png \
-  "figures/patients/СА1_013_repertoire_QC_and_overlap.png" \
-  results/current/sample_metadata_current.csv \
-  results/current/patient_panel_index.csv \
-  results/current/patients/СА1_013_shared_clonotypes.csv
-do
-  if [[ ! -s "$f" ]]; then
-    echo "ERROR: expected refreshed output is missing: $f" >&2
-    exit 1
-  fi
-done
+python - <<'PY'
+from pathlib import Path
+import pandas as pd
 
-echo "Removing intermediate figure directories..."
-rm -rf figures/corrected figures/corrected_age6 figures/current
+meta = pd.read_csv('results/current/sample_metadata_current.csv')
+meta['analysis_include_final'] = meta['analysis_include_final'].astype(str).str.lower().isin(['true','1','yes'])
+if meta['clinical_timepoint'].astype(str).eq('T0').any():
+    raise SystemExit('T0 was reintroduced downstream')
+controls = meta[meta['is_control'].astype(str).str.lower().isin(['true','1','yes'])]
+if not controls['clinical_timepoint'].eq('CONTROL').all():
+    raise SystemExit('A healthy control has a longitudinal time point')
+rep = meta[meta['library_id'].isin(['new_106','new_111'])]
+if len(rep) != 2 or not rep['analysis_include_final'].all() or not rep['clinical_timepoint'].eq('T2').all():
+    raise SystemExit('БА1_071 T2 replicate handling is incorrect')
 
-echo
-echo "===== FINAL FIGURE TREE ====="
-find figures -maxdepth 2 -type f -printf '%TY-%Tm-%Td %TH:%TM:%TS  %p\n' | sort
+pairs = pd.read_csv('results/current/longitudinal_expanded_clone_summary.csv')
+counts = pairs.groupby('age_group')['patient_id'].nunique().to_dict()
+if counts.get('child', 0) != 6 or counts.get('adult', 0) != 16:
+    raise SystemExit(f'Unexpected paired cohort counts: {counts}')
 
-echo
-echo "Refresh completed successfully."
-echo "Group figures:   $ROOT/figures/group"
+required = [
+    'figures/FIGURE_INDEX.txt',
+    'figures/group/01_cross_sectional_clonality_children.png',
+    'figures/group/01_cross_sectional_clonality_adults.png',
+    'figures/group/04_paired_clonality_children.png',
+    'figures/group/04_paired_clonality_adults.png',
+    'figures/group/06_expanded_clone_fate_children.png',
+    'figures/group/06_expanded_clone_fate_adults.png',
+    'results/current/cross_sectional_statistics.csv',
+    'results/current/longitudinal_expanded_clone_summary.csv',
+    'results/current/new_T2_expansions.csv',
+    'results/current/patient_panel_index.csv',
+]
+for name in required:
+    p = Path(name)
+    if not p.exists() or p.stat().st_size == 0:
+        raise SystemExit(f'Missing refreshed output: {name}')
+print('Final verification passed')
+PY
+
+echo "Refresh completed successfully"
+echo "Group figures: $ROOT/figures/group"
 echo "Patient figures: $ROOT/figures/patients"
-echo "Tables:          $ROOT/results/current"
+echo "Tables: $ROOT/results/current"
