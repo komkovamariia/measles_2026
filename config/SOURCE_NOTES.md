@@ -1,85 +1,124 @@
-# Source rules used by the pipeline
+# Source notes and authoritative cohort rules
 
-## New cohort
+## Current metadata source
 
-`Корь_Влада.docx` is the source for the 96 sequencing-library records and their sequencing indices. The integer before the first underscore maps a FASTQ prefix to a sequencing record. The raw sequencing label is preserved in `raw_sample_id` for traceability.
+The authoritative biological metadata is `config/measles_metadata_v2_age18_final.xlsx`
 
-The uploaded clinical workbook `Корь метадата.xlsx` is used for disease status and age metadata for sequenced new-cohort patients. The study owner subsequently clarified the authoritative longitudinal rule from the sequencing/sample list: **there is no T0 in this study** and the final suffix denotes the study time point directly:
+A plain CSV copy used by the analysis scripts is stored as `config/analysis_metadata.csv`
 
-- `.1` -> `T1`;
-- `.2` and labelled variants such as `.2а` -> `T2`;
-- `.3` -> `T3`.
+The current final rules are
 
-The analysis-ready fields are stored in `config/sample_manifest.csv`:
+- minimum library quality is 4400 productive TRB clonotypes
+- children are younger than 18 years
+- adults are 18 years and older
+- healthy controls have clinical point `CONTROL` only
+- measles cases use T1, T2 and T3
+- T0 is not a study point
+- T4 is part of the intended clinical design at about six months but no T4 sequencing library is present in the current dataset
 
-- `disease_status`: `measles` / `healthy`;
-- `is_control`: healthy-control flag;
-- `age_group`: `adult` / `child`, with the current study rule child < 6 years and adult >= 6 years;
-- `clinical_timepoint`: `T1`, `T2`, or `T3` for new sequencing libraries;
-- `include`: whether the library is currently eligible for biological inference.
+## Biological meaning of the time points
 
-Patients present in the clinical workbook but absent from sequencing are not added to the repertoire analysis.
+T1 is the early infection point after measles infection and before the mature adaptive response is expected to be fully developed
 
-## Authoritative time-point rule: no T0
+T2 is the point immediately after clinical recovery
 
-The previous interpretation that clinical workbook columns could remap the numeric suffix to another phase has been retired. For the new sequencing cohort, `analysis_timepoint` and `clinical_timepoint` must agree with the suffix in `raw_sample_id`.
+T3 is the follow up point about one month after recovery
 
-Examples:
+The sequencing suffix is authoritative for the current data
 
-- `СА1_013.1/.2/.3` -> `T1/T2/T3`;
-- `ММ1_033.1/.2/.3` -> `T1/T2/T3`;
-- `ЭГ1_042.1/.2/.3` -> `T1/T2/T3`;
-- `ПМ1_009.1/.2` -> `T1/T2`;
-- `ГА1_003.2` -> `T2`;
-- `ОЛ1_018.2` -> `T2`;
-- `БА1_071.2а` -> `T2` for the time-point field.
+- `.1` means T1
+- `.2` and `.2а` mean T2
+- `.3` means T3
 
-`T0` is invalid and repository validation fails if any new sequencing library is assigned to `T0`.
+Healthy controls are not assigned T1, T2 or T3 even when a raw sample label contains a numeric suffix
 
-## Reconciled patient identifiers
+## Resolved biological repeat for БА1_071
 
-The following sequencing labels remain reconciled to patient identifiers in the clinical workbook while preserving the raw sequencing label. The longitudinal point itself is determined from the raw suffix:
+`new_106` is `106_БА1_071.2`
 
-- `21_ОЛ1_016.1` -> patient `ОЛ1_018`, `T1`; `75_ОЛ1_018.2` -> the same patient, `T2`;
-- `22_СА1_017.1` -> patient `СА1_019`, `T1`;
-- `23_МС1_018.1` -> patient `МС1_020`, `T1`;
-- `57_НЛ1_043.2` -> patient `НЛ1_043`, `T2`; the workbook cell is written as `НЛ1_0432` without the dot.
+`new_111` is `111_БА1_071.2а`
 
-## QC and unresolved sequencing/identity conflicts
+Both are accepted T2 libraries for the same patient and both pass the final 4400 clonotype quality threshold
 
-The following libraries retain `include=False` and are excluded from biological group/longitudinal inference until resolved. Their time-point suffix is still recorded independently where possible:
+They are not counted as two independent T2 observations
 
-- `new_24` / `24_ФО1_019.1`: patient identity is unresolved relative to the clinical workbook; time point is `T1` from the suffix;
-- `new_39` / `39_ММ1_033.2`: strong sample-identity QC warning. Abundance-weighted TRB similarity is approximately 0.00004 for `.1` vs `.2` and 0.00016 for `.2` vs `.3`, while `.1` vs `.3` is approximately 0.57. This pattern is much more consistent with a sample identity/mislabelling problem than ordinary longitudinal turnover. The time points are nevertheless `T1`, `T2`, `T3` by suffix;
-- `new_88` / `88_КА1_059.1`: a second sequencing library is again labelled `КА1_059.1`; it is `T1` by suffix but remains excluded pending clarification of whether it is a technical replicate or mislabelled sample;
-- `new_111` / `111_БА1_071.2а`: time point is `T2` by suffix, but the library remains excluded by the current curated config pending clarification of the `2а` sample identity.
+For patient level repertoire analyses each library is first normalized to clonotype frequencies that sum to one. The normalized frequencies are then averaged across the two T2 libraries. Missing clonotypes in one replicate contribute zero in that replicate. The resulting averaged T2 repertoire contributes one biological observation for patient БА1_071
 
-## СА1_013 T1 MiXCR export
+This prevents the deeper library from receiving greater weight
 
-`new_15` / `15_CA1_013.1` is unequivocally the `T1` sample of patient `СА1_013`. Its current MiXCR TSV was header-only and contained zero productive TRB clonotypes. It had been incorrectly accepted as a valid resume output because the previous validity check only inspected the header. The pipeline now removes invalid/header-only exports before resume and requires at least one positive productive TRB clonotype. Until that sample is successfully regenerated, T1 is shown in patient QC but excluded from biological overlap; valid `T2` and `T3` can still be compared.
+## Legacy cohort reconciliation
 
-## Antigen-specificity reference limitation
+UDP labels are sequencing adapter identifiers and are not biological patient identifiers
 
-The current `IEDB_data.tsv` TCRMatch subset used by the project contains 763 unique Hepatitis B reference CDR3 sequences but no reference records labelled Measles, Poliovirus or Tetanus. Therefore zero exact matches for those three pathogens are **not biological evidence of absence**. The pipeline records reference coverage explicitly and reports unavailable pathogens as missing/unsupported rather than zero. Exact matching should be treated as a conservative annotation layer; a validated broader specificity/similarity reference is required before the measles and immune-amnesia hypotheses can be answered from antigen annotation.
+The corrected mappings are
 
-## Legacy cohort
+- UDP0097 is МР1_001.1, patient МР1_001, T1, measles
+- UDP0098 is БА1_002.1, patient БА1_002, T1, measles
+- UDP0099 is ГА1_003.1, patient ГА1_003, T1, measles
+- UDP0100 is ХИ1_004.1, patient ХИ1_004, T1, measles
+- UDP0101 is ИМ1_005.1, patient ИМ1_005, T1, measles
+- UDP0102 is ПИ1_006.1, patient ПИ1_006, T1, measles
+- UDP0103 is СС1_007.1, patient СС1_007, T1, measles
+- UDP0104 is ХИ1_004.2, patient ХИ1_004, T2, measles
+- UDP0105 is ШЕ1_008.1, patient ШЕ1_008, T1, measles
+- UDP0106 through UDP0112 are healthy adult controls CGIMU_N1 through CGIMU_N7
 
-Old FASTQ files are stored under `/projects/mice_transplant_2025/measles/raw/pe150_res` and are named like `FT150008642_56_L01_UDP0112_1.fq.gz` and `_2.fq.gz`.
+UDP0108 remains excluded from biological inference because its repertoire is unusually similar to UDP0107
 
-All legacy libraries are adults and are different people from the new cohort. Legacy identifiers remain independent `UDP0097` ... `UDP0112` patients and are never linked longitudinally to new biological codes.
+The T1 sample ГА1_003.1 is from the legacy sequencing batch while ГА1_003.2 is from the new batch. This paired patient is retained but should be checked in a sensitivity analysis because the two clinical points come from different sequencing batches
 
-- UDP0097-UDP0105: adult measles cases, retained as `legacy_acute` for sensitivity analyses;
-- UDP0106-UDP0112: healthy adult controls;
-- UDP0108: processed for QC but excluded from biological inference.
+## Main analysis questions
 
-Primary case-control summaries use the new sequencing batch with one biological sample per patient to limit batch confounding. Adult all-batch comparisons are retained as sensitivity analyses.
+### Cross sectional analysis
 
-## Downstream grouping contract
+All accepted T1 patient observations are compared with age matched healthy controls. T1 observations remain in the analysis even when the same patient has no T2 sample
 
-Biological analysis uses:
+All accepted T2 patient observations are also summarized against healthy controls
 
-- `patient_id` for biological identity;
-- `clinical_timepoint` for longitudinal phase, with new-cohort `.1/.2/.3 = T1/T2/T3` and no T0;
-- `is_control` / `disease_status` for control-vs-measles comparisons;
-- `age_group` for adult/child stratification using child < 6 years, adult >= 6 years;
-- `include=False` to exclude unresolved/QC-failed libraries from biological inference while retaining traceability.
+T1 and T2 are not treated as independent groups for a direct independent test because some observations belong to the same patient
+
+### Paired longitudinal analysis
+
+The primary immune amnesia analysis uses only patients with accepted T1 and T2 observations
+
+The current paired sample sizes are
+
+- children younger than 18 years: 6 patients
+- adults 18 years and older: 16 patients
+
+Clonality and Shannon diversity are calculated on the complete patient repertoire
+
+Overlap is calculated only among expanded clonotypes
+
+## Expanded clonotype definition
+
+The working expanded clonotype threshold is 0.10 percent of productive TRB reads within a biological patient observation
+
+The overlap feature is `aaV`, defined as CDR3 beta amino acid sequence together with TRBV gene
+
+This threshold removes the low frequency repertoire from the overlap analysis. Bulk genomic DNA TRB sequencing does not directly identify naive, memory or effector phenotype, so the analysis does not claim that every excluded low frequency clonotype is biologically naive
+
+The 0.10 percent threshold is consistent with published TCR repertoire studies that use 0.10 percent as a highly expanded clone threshold and with replicate work showing that TCR beta frequencies around this level are substantially more stable across replicate samples
+
+References
+
+https://pmc.ncbi.nlm.nih.gov/articles/PMC4998859/
+
+https://pmc.ncbi.nlm.nih.gov/articles/PMC10374308/
+
+## Immune amnesia interpretation
+
+The main hypothesis is that clonotypes representing established adaptive immune memory at T1 are depleted after measles
+
+The primary readouts are
+
+- change in complete repertoire clonality from T1 to T2
+- change in Shannon diversity from T1 to T2
+- fraction of expanded T1 clonotypes that remain expanded at T2
+- fraction detected at T2 but below the expansion threshold
+- fraction no longer detected at T2
+- expanded clone Jaccard similarity between T1 and T2
+
+New T2 expansions are analyzed separately. If clonality rises after recovery, new expanded clonotypes are exported for exact specificity matching against the available reference database
+
+An absent database match is not evidence that a clonotype has no antigen specificity. Reference coverage is reported explicitly
