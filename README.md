@@ -1,157 +1,159 @@
-# Measles TCR-beta repertoire analysis
+# Measles TCR beta repertoire analysis
 
-A deliberately small Jupyter pipeline for the human measles TCR-beta project.
+This repository contains the final analysis workflow for bulk human TRB sequencing in the measles cohort
 
-The workflow answers five practical questions:
+The current biological metadata is stored in `config/measles_metadata_v2_age18_final.xlsx`
 
-1. Which TRB aaV clonotypes are retained, lost or newly detected between time points of the same patient?
-2. Which TRBV genes disappear, appear, increase or decrease by their share of productive TRB reads?
-3. Are there recurrent TRBV patterns across adults/children and healthy/acute measles groups?
-4. Are measles- and other infection-associated CDR3β clonotypes differently represented during measles?
-5. Does overall TCRβ repertoire diversity change during disease and recovery?
+The analysis copy used by scripts is `config/analysis_metadata.csv`
 
-The implementation stays intentionally simple: MiXCR preprocessing, two notebooks, Venn overlaps, TRBV read fractions and simple non-parametric statistics.
+## Final cohort rules
 
-## Patient identity and time points
+- final library quality threshold: at least 4400 productive TRB clonotypes
+- child: younger than 18 years
+- adult: 18 years and older
+- healthy controls: `CONTROL` only
+- measles time points: T1, T2 and T3
+- T0 is not used
+- T4 is part of the intended clinical design at about six months but is not present among the current sequencing libraries
 
-For the new cohort, the first integer in a study-table record is the sequencing-library index. The biological patient ID is the complete code after that index and before the final time-point suffix.
+T1 is the early infection point after infection and before the mature adaptive response is expected to be fully developed
+
+T2 is immediately after clinical recovery
+
+T3 is the follow up point about one month after recovery
+
+## Two complementary analysis designs
+
+### Cross sectional design
+
+All accepted T1 observations are retained even when the patient has no T2 sample
+
+Healthy controls are compared with all T1 observations and separately with all T2 observations within the same age group
+
+Current biological observation counts after QC are
+
+| Age group | Healthy controls | T1 | T2 |
+| --- | ---: | ---: | ---: |
+| Children younger than 18 years | 4 | 27 | 8 |
+| Adults 18 years and older | 13 | 29 | 19 |
+
+T1 and T2 are not treated as independent groups for a direct independent test because some observations belong to the same patient
+
+### Paired longitudinal design
+
+The primary immune amnesia analysis uses only patients with both accepted T1 and T2 observations
+
+- children younger than 18 years: 6 paired patients
+- adults 18 years and older: 16 paired patients
+
+Clonality and Shannon diversity are calculated from the complete patient repertoire
+
+Clone overlap is calculated only among expanded clonotypes
+
+## Expanded clonotypes
+
+An expanded clonotype is defined as an `aaV` clone with at least 0.10 percent of productive TRB reads in a biological patient observation
+
+`aaV` means CDR3 beta amino acid sequence together with TRBV gene
+
+The expanded clone filter removes the low frequency background from overlap analysis. Bulk genomic DNA TRB sequencing does not directly phenotype naive, memory or effector T cells, therefore the workflow does not label every low frequency clone as naive
+
+The primary immune amnesia readouts are
+
+- T1 to T2 change in clonality
+- T1 to T2 change in Shannon diversity
+- expanded T1 clones that remain expanded at T2
+- expanded T1 clones detected at T2 below the expansion threshold
+- expanded T1 clones not detected at T2
+- expanded clone Jaccard similarity
+
+New expanded clones at T2 are exported separately for exact specificity matching against the available reference database
+
+## БА1_071 T2 biological repeat
+
+`new_106` and `new_111` are both accepted T2 libraries for patient БА1_071
+
+`new_111` is the raw sample `111_БА1_071.2а`
+
+The two libraries are not counted as two patients or two independent T2 observations
+
+For patient level analysis each library is first normalized to clonotype frequencies. The normalized frequencies are then averaged. The resulting averaged repertoire is one T2 observation for patient БА1_071
+
+## Legacy cohort correction
+
+UDP0097 through UDP0105 are measles samples but UDP is an adapter identifier rather than the biological patient identifier
+
+The corrected biological patients are МР1_001, БА1_002, ГА1_003, ХИ1_004, ИМ1_005, ПИ1_006, СС1_007 and ШЕ1_008
+
+UDP0106 through UDP0112 are healthy controls CGIMU_N1 through CGIMU_N7
+
+UDP0108 remains excluded because its repertoire is unusually similar to UDP0107
+
+The legacy sample ХИ1_004.2 is T2 for the same patient as ХИ1_004.1
+
+The legacy sample ГА1_003.1 is T1 for the same patient as the new sample ГА1_003.2 at T2
+
+## Main outputs
+
+Group figures are published to
 
 ```text
-15_CA1_013.1
-19_CA1_013.2
+figures/group
 ```
 
-are the same patient `CA1_013` at time points 1 and 2. `22_CA1_017.1` is a different patient `CA1_017`.
-
-The final `.1`, `.2`, `.3` means admission, clinical recovery/temperature normalization and later follow-up respectively.
-
-FASTQ files are linked to the study table by the integer before the first underscore. For example all files from `10_S1_L001_R1_001.fastq.gz` through lane L004 and read mate R2 belong to sequencing index `10`.
-
-## Input cohorts
-
-New FASTQ directory:
+Patient figures are published to
 
 ```text
-/projects/mice_transplant_2025/raw/20260817_161454/Fastq
+figures/patients
 ```
 
-A complete new library must contain all four paired lanes L001-L004. The preprocessing step writes `results/fastq_audit.csv` and stops a full run if an included sample is incomplete.
-
-Legacy FASTQ directory:
+Final tables are stored in
 
 ```text
-/projects/mice_transplant_2025/measles/raw/pe150_res
+results/current
 ```
 
-The old files are paired as `_1.fq.gz` and `_2.fq.gz`, for example:
+Important tables include
 
 ```text
-FT150008642_56_L01_UDP0112_1.fq.gz
-FT150008642_56_L01_UDP0112_2.fq.gz
+cross_sectional_cohort_counts.csv
+cross_sectional_statistics.csv
+longitudinal_expanded_clone_summary.csv
+expanded_clone_fates.csv
+new_T2_expansions.csv
+expanded_TRBV_usage.csv
+patient_panel_index.csv
 ```
 
-The study owner clarified the old-cohort interpretation:
+Patient panels show complete repertoire diversity, overlap of expanded clonotypes only, fate of expanded clones from the earlier point and the largest new expansions at the later point
 
-1. UDP0097-UDP0105 are adult measles cases and are assigned to analysis time point 1;
-2. UDP0106-UDP0112 are healthy adult controls;
-3. every legacy UDP library represents a different adult person;
-4. legacy UDP identities are independent from all new-cohort patient codes and are never joined longitudinally to them;
-5. UDP0108 is processed for the historical UDP0107/UDP0108 QC comparison but remains excluded from biological inference.
-
-The complete analysis requires both cohorts. `run_all_from_scratch.sh` locates `pe150_res` automatically and stops if required input files are missing.
-
-## One-shot run from scratch
+## Refresh analysis without rerunning MiXCR
 
 ```bash
-git clone https://github.com/komkovamariia/measles_2026.git
-cd measles_2026
-nohup bash run_all_from_scratch.sh > logs/bootstrap_submit.log 2>&1 &
+cd ~/measles_2026
+git pull --ff-only
+python scripts/validate_repository.py
+jid=$(sbatch --parsable scripts/run_analysis_refresh_slurm.sh)
+echo "$jid"
+tail -F "logs/refresh_slurm_${jid}.out"
 ```
 
-The bootstrap script creates or updates the pinned conda environment, validates the repository, caches the IEDB TCRMatch reference, locates both sequencing cohorts and submits the full Slurm job. No pilot is required for this command.
+The refresh job reuses existing MiXCR clonotype exports
 
-## Patient-level outputs
+## Full run from raw FASTQ
 
-For every new-cohort patient with at least two time points:
-
-```text
-figures/patients/<PATIENT>_aav_venn.png/pdf
-figures/patients/<PATIENT>_T1_to_T2_trbv_change.png/pdf
-figures/patients/<PATIENT>_T2_to_T3_trbv_change.png/pdf
-
-results/longitudinal/patients/<PATIENT>_T1_to_T2_trbv_changes.csv
-results/longitudinal/patients/<PATIENT>_T2_to_T3_trbv_changes.csv
+```bash
+bash run_all_from_scratch.sh
 ```
 
-The Venn feature is the same simple `aaV = (CDR3aa, TRBV)` definition used by the mouse project. Separate CDR3-only and aaV overlap tables are also saved.
-
-For every TRBV transition the table contains:
-
-```text
-fraction_old
-fraction_new
-delta_fraction
-delta_percentage_points
-presence_change = gained / lost / persistent / absent_both
-direction = increased / decreased / unchanged
-```
-
-TRBV fraction is:
-
-```text
-reads assigned to TRBV / all productive TRB reads in the biological sample
-```
-
-## Group-level TRBV analysis
-
-The project calculates:
-
-1. adult acute versus adult healthy;
-2. child acute versus child healthy;
-3. adults versus children within acute measles;
-4. adults versus children within healthy controls;
-5. paired T1→T2 and T2→T3 changes separately in adults and children;
-6. adult versus child differences in the patient-level longitudinal TRBV change.
-
-Mann-Whitney U is used for independent groups and Wilcoxon signed-rank for paired longitudinal measurements. A p-value is omitted when a comparison has fewer than three independent observations per required group. Benjamini-Hochberg correction is applied within each TRBV comparison block.
-
-Main outputs:
-
-```text
-results/longitudinal/trbv_group_statistics.csv
-results/longitudinal/trbv_top_patterns.csv
-figures/09_group_trbv_patterns.png/pdf
-figures/10_group_trbv_gain_loss.png/pdf
-```
-
-## Other retained analyses
-
-The project also keeps depth-normalized repertoire richness and Shannon diversity, top-10 clonotype dominance, TRBV/TRBJ usage, exact CDR3β matches to IEDB for measles, hepatitis B, poliovirus and tetanus, and longitudinal diversity trajectories.
-
-Read downsampling is performed without replacement with seed `1031`.
-
-## Project layout
-
-```text
-config/sample_manifest.csv                 source metadata
-config/SOURCE_NOTES.md                     explicit cohort rules
-notebooks/00_prepare_and_mixcr.ipynb       small preprocessing notebook
-notebooks/01_measles_analysis.ipynb        patient and group analyses
-scripts/preprocess_human_trb.py            FASTQ validation + MiXCR
-scripts/analysis_01_prepare.py              biological sample assembly + diversity
-scripts/analysis_05_longitudinal_venn.py   Venn + TRBV changes
-scripts/run_pipeline.py                    notebook runner + output verification
-scripts/validate_repository.py             static preflight checks
-scripts/run_slurm.sh                       one 24-CPU Slurm job
-run_all_from_scratch.sh                    environment + validation + submit
-results/                                   CSV tables
-figures/                                   PNG and PDF figures
-audit_runs/                                executed notebooks
-logs/                                      notebook and MiXCR logs
-```
+The full workflow uses MiXCR 4.7.0 with the project environment and the configured human DNA TCR multiplex preset
 
 ## Interpretation limits
 
-The libraries are bulk TRB data from genomic-DNA multiplex sequencing. Read counts provide relative abundance and may contain multiplex-PCR bias, so TRBV changes are reported as read fractions and diversity is additionally assessed after common-depth downsampling.
+Read fractions from multiplex genomic DNA TRB sequencing are relative abundance measures and can contain PCR amplification bias
 
-The default MiXCR preset is `milab-human-dna-tcr-multiplex`. Keep it only if this is the confirmed wet-lab protocol; otherwise set `MEASLES_MIXCR_PRESET` to the appropriate protocol preset before submission.
+The expanded clone threshold is an operational repertoire threshold, not a direct cell phenotype measurement
+
+Exact database matching has incomplete antigen coverage. A missing match must not be interpreted as absence of biological antigen specificity
+
+See `config/SOURCE_NOTES.md` for all cohort reconciliation decisions and analysis definitions
