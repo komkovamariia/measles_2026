@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Publish only the final user-facing figures.
-
-Final layout:
-figures/
-  group/      final cohort-level figures
-  patients/   final patient-level panels
-  FIGURE_INDEX.txt
-
-All stale top-level PNG/PDF files and intermediate corrected/current figure
-folders are removed during publication.
-"""
+"""Publish only final group and patient figures"""
 from pathlib import Path
 import shutil
 
@@ -21,28 +11,20 @@ GROUP = FIG / "group"
 PATIENTS = FIG / "patients"
 
 marker = CURRENT / "GENERATED_CURRENT.txt"
-if not marker.exists() or marker.stat().st_size == 0:
-    raise RuntimeError(
-        "Authoritative figures/current outputs are missing. "
-        "Run final reporting successfully before publishing."
-    )
+if not marker.exists():
+    raise RuntimeError("Final figure marker is missing")
 
-main_files = sorted(p for p in CURRENT.iterdir() if p.suffix.lower() in {".png", ".pdf"})
-patient_files = sorted(p for p in CURRENT_PATIENTS.iterdir() if p.suffix.lower() in {".png", ".pdf"})
-if not main_files:
-    raise RuntimeError("No final group PNG/PDF files found in figures/current.")
-if not patient_files:
-    raise RuntimeError("No final patient PNG/PDF files found in figures/current/patients.")
-
-# Clean stale published outputs.
 for d in [GROUP, PATIENTS]:
     if d.exists():
         shutil.rmtree(d)
     d.mkdir(parents=True, exist_ok=True)
 
-for p in FIG.iterdir():
-    if p.is_file() and (p.suffix.lower() in {".png", ".pdf"} or p.name in {"CURRENT_OUTPUTS.txt", "FIGURE_INDEX.txt"}):
-        p.unlink()
+main_files = sorted(p for p in CURRENT.iterdir() if p.suffix.lower() in {".png", ".pdf"})
+patient_files = sorted(p for p in CURRENT_PATIENTS.iterdir() if p.suffix.lower() in {".png", ".pdf"})
+if not main_files:
+    raise RuntimeError("No final group figures were generated")
+if not patient_files:
+    raise RuntimeError("No final patient figures were generated")
 
 for src in main_files:
     shutil.copy2(src, GROUP / src.name)
@@ -51,26 +33,24 @@ for src in patient_files:
 
 index = FIG / "FIGURE_INDEX.txt"
 lines = [
-    "FINAL USER-FACING FIGURES",
+    "FINAL FIGURES",
     "",
     marker.read_text(encoding="utf-8").strip(),
     "",
-    f"Group figures: {len(main_files)}",
+    "GROUP ANALYSIS",
 ]
-lines.extend(f"  group/{p.name}" for p in main_files)
-lines.append("")
-lines.append(f"Patient figures: {len(patient_files)}")
-lines.extend(f"  patients/{p.name}" for p in patient_files)
+lines.extend(f"group/{p.name}" for p in main_files)
+lines.extend(["", "PATIENT ANALYSIS"])
+lines.extend(f"patients/{p.name}" for p in patient_files)
 lines.extend([
     "",
-    "Patient panels include:",
-    "- Venn counts with readable white background boxes;",
-    "- biological labels for T1/T2/T3;",
-    "- top shared aaV clonotypes by productive-read share;",
-    "- top 10 TRBV changes by summed clone read share for the primary transition.",
+    "Analysis logic",
+    "Cross sectional figures use all accepted T1 observations, all accepted T2 observations and healthy controls",
+    "Paired figures use only patients with both accepted T1 and T2 observations",
+    "Patient overlap is calculated only for expanded aaV clonotypes",
+    "Expanded means at least 0.10 percent of productive TRB reads",
+    "БА1_071 T2 is one patient observation formed by averaging normalized frequencies from new_106 and new_111",
 ])
 index.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-print(f"Published {len(main_files)} group figure files to {GROUP}")
-print(f"Published {len(patient_files)} patient figure files to {PATIENTS}")
-print(f"Index: {index}")
+print(f"Published {len(main_files)} group figure files")
+print(f"Published {len(patient_files)} patient figure files")
