@@ -37,7 +37,7 @@ The first established scripts are retained to build metadata, patient Venn panel
 
 `analysis_10_clone_fate_v2.py` builds the one-row-per-T1-nucleotide-clonotype master scaffolding.
 
-`analysis_12_exact_rarefaction.py` is the primary sampling-controlled branch. Each patient pair is repeatedly rarefied to that pair's own minimum accepted T1/T2 library depth. At least 500 iterations are required.
+`analysis_12_exact_rarefaction.py` is the primary sampling-controlled branch. Each patient pair is repeatedly rarefied to that pair's own minimum accepted T1/T2 library depth. At least 500 iterations are required. The complete threshold grid is evaluated inside these same rarefaction iterations, so the expensive sampling is not repeated separately for each threshold.
 
 `analysis_11_clone_enrichment.py` performs patient-aware TRBV, TRBJ and CDR3-motif enrichment after sampling correction.
 
@@ -49,7 +49,7 @@ Simpson clonality = sqrt(Simpson D)
 normalized richness = unique productive clonotypes / productive TRB reads
 ```
 
-`analysis_16_extended_thresholds.py` is the authoritative threshold-sensitivity calculation for both branches. It uses this exact expansion grid:
+Both analytical branches use the same exact expansion grid:
 
 ```text
 0.05
@@ -70,9 +70,9 @@ normalized richness = unique productive clonotypes / productive TRB reads
 1.50 percent
 ```
 
-The rarefied half repeats pair-specific without-replacement rarefaction for every threshold. The raw Simpson half uses the same threshold grid on observed normalized frequencies without downsampling.
+`analysis_16_extended_thresholds.py` is now only a lightweight validator and consolidator. It combines the already computed full-grid outputs from the rarefied and no-downsampling branches and does not run an additional rarefaction loop.
 
-`analysis_15_tz_final_reporting.py` curates the final tree. `analysis_17_apply_extended_thresholds.py` then overwrites the final threshold table and the two sensitivity panels with the full 0.05 to 1.50 percent grid, without creating duplicate figures.
+`analysis_15_tz_final_reporting.py` curates the final tree. `analysis_17_apply_extended_thresholds.py` then ensures the final threshold table and the two sensitivity panels display the complete 0.05 to 1.50 percent grid without creating duplicate figures.
 
 ## Pair-specific rarefaction
 
