@@ -11,7 +11,7 @@
 - physical clone key: CDR3 nucleotide + TRBV + TRBJ
 - functional/public key: CDR3 amino acid + TRBV + TRBJ
 - primary expanded threshold: 0.10 percent
-- final sensitivity thresholds: 0.05, 0.10, 0.20 and 0.50 percent
+- final sensitivity thresholds: 0.05, 0.10, then 0.20 through 1.50 percent in 0.10 percentage-point steps
 
 `new_106` and `new_111` are accepted T2 biological repeats for БА1_071. They are handled separately through normalization and rarefaction, then averaged into one biological T2 observation.
 
@@ -28,7 +28,9 @@ analysis_10_clone_fate_v2.py
 analysis_12_exact_rarefaction.py
 analysis_11_clone_enrichment.py
 analysis_14_simpson_no_downsampling.py
+analysis_16_extended_thresholds.py
 analysis_15_tz_final_reporting.py
+analysis_17_apply_extended_thresholds.py
 ```
 
 The first established scripts are retained to build metadata, patient Venn panels and reproducible intermediate quantities. Their exploratory figures are temporary and are deleted from the finished tree.
@@ -47,9 +49,30 @@ Simpson clonality = sqrt(Simpson D)
 normalized richness = unique productive clonotypes / productive TRB reads
 ```
 
-The same observed clone-fate and threshold-sensitivity logic is repeated in that branch.
+`analysis_16_extended_thresholds.py` is the authoritative threshold-sensitivity calculation for both branches. It uses this exact expansion grid:
 
-`analysis_15_tz_final_reporting.py` is the only final publisher. It keeps only figures and tables that map to the requested presentation logic and deletes staging output.
+```text
+0.05
+0.10
+0.20
+0.30
+0.40
+0.50
+0.60
+0.70
+0.80
+0.90
+1.00
+1.10
+1.20
+1.30
+1.40
+1.50 percent
+```
+
+The rarefied half repeats pair-specific without-replacement rarefaction for every threshold. The raw Simpson half uses the same threshold grid on observed normalized frequencies without downsampling.
+
+`analysis_15_tz_final_reporting.py` curates the final tree. `analysis_17_apply_extended_thresholds.py` then overwrites the final threshold table and the two sensitivity panels with the full 0.05 to 1.50 percent grid, without creating duplicate figures.
 
 ## Pair-specific rarefaction
 
@@ -85,7 +108,7 @@ Patient Venn panels are retained as the first layer.
 The final rarefied branch then shows:
 
 1. changes in representation inside the shared T1-expanded segment and overall T1 clone fate
-2. sampling robustness and threshold sensitivity
+2. sampling robustness and threshold sensitivity across 0.05 to 1.50 percent
 3. top increased, stable and decreased nonzero candidate clonotypes with TRBV labels
 4. TRBV/TRBJ/CDR3 enrichment and the measles-associated versus known non-measles versus unknown specificity fork
 
