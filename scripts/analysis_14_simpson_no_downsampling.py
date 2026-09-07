@@ -64,9 +64,6 @@ def lib_metrics(z: pd.DataFrame) -> dict:
     }
 
 
-# Compute the article-style metrics per sequencing library, then average accepted
-# replicate-library metrics within a biological patient time point. This preserves
-# equal replicate weighting and avoids turning two libraries into one deeper sample.
 metric_rows = []
 for patient in paired:
     pmeta = case[case.patient_id.astype(str).eq(patient) & case.clinical_timepoint.isin(["T1", "T2"])].copy()
@@ -92,8 +89,6 @@ for patient in paired:
 metrics = pd.DataFrame(metric_rows)
 metrics.to_csv(CURRENT / "simpson_raw_patient_metrics.csv", index=False)
 
-# Clone-level observed branch. The nucleotide master table already stores patient-level
-# observed T1/T2 normalized frequencies after the accepted replicate rule.
 for c in ["T1_fraction", "T2_fraction", "T1_count", "T2_count"]:
     master[c] = pd.to_numeric(master.get(c, np.nan), errors="coerce").fillna(0.0)
 
@@ -115,8 +110,7 @@ for patient, idx in raw.groupby("patient").groups.items():
     if total > 0:
         raw.loc[p.index[mask], "raw_T1_expanded_mass_share"] = p.loc[mask, "T1_fraction"] / total
 
-# Direction categories for presentation. A two-fold band is used for the descriptive
-# increased/stable/decreased split. Complete absence remains a separate category.
+
 def direction(row):
     if row.T1_fraction < PRIMARY:
         return "not primary T1-expanded"
@@ -140,22 +134,33 @@ threshold_rows = []
 for patient in paired:
     p = raw[raw.patient.astype(str).eq(patient)].copy()
     age = str(p.age_group.iloc[0])
-    for th in THRESHOLDS:
+    for pct, th in zip(THRESHOLD_PCT, THRESHOLDS):
         e = p[p.T1_fraction.ge(th)].copy()
+        base = {
+            "branch": "simpson_no_downsampling",
+            "patient": patient,
+            "age_group": age,
+            "threshold_fraction": th,
+            "threshold_percent": pct,
+        }
         if e.empty:
+            threshold_rows.append({
+                **base,
+                "retained_count_percent": np.nan,
+                "below_count_percent": np.nan,
+                "not_detected_count_percent": np.nan,
+                "retained_mass_percent": np.nan,
+                "below_mass_percent": np.nan,
+                "not_detected_mass_percent": np.nan,
+            })
             continue
         retained = e.T2_fraction.ge(th)
         detected = e.T2_fraction.gt(0)
         below = detected & ~retained
         lost = ~detected
-        mass = e.T1_fraction.to_numpy(float)
-        mass_total = float(mass.sum())
+        mass_total = float(e.T1_fraction.sum())
         threshold_rows.append({
-            "branch": "simpson_no_downsampling",
-            "patient": patient,
-            "age_group": age,
-            "threshold_fraction": th,
-            "threshold_percent": 100 * th,
+            **base,
             "retained_count_percent": 100 * float(retained.mean()),
             "below_count_percent": 100 * float(below.mean()),
             "not_detected_count_percent": 100 * float(lost.mean()),
@@ -168,6 +173,9 @@ threshold = pd.DataFrame(threshold_rows)
 observed = {round(float(x), 8) for x in threshold.threshold_percent.dropna().unique()}
 if observed != set(THRESHOLD_PCT):
     raise RuntimeError(f"Unexpected Simpson threshold grid: {sorted(observed)}")
+counts_per_threshold = threshold.groupby("threshold_percent").patient.nunique().to_dict()
+if any(v != 22 for v in counts_per_threshold.values()) or len(counts_per_threshold) != len(THRESHOLD_PCT):
+    raise RuntimeError(f"Incomplete Simpson threshold coverage: {counts_per_threshold}")
 threshold.to_csv(CURRENT / "simpson_raw_threshold_sensitivity.csv", index=False)
 
 keep = raw.T1_fraction.ge(PRIMARY)
