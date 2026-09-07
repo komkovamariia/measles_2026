@@ -1,10 +1,8 @@
 # Measles TCR beta repertoire analysis
 
-This repository contains the final analysis workflow for bulk human TRB sequencing in the measles cohort
+This repository contains the analysis workflow for bulk human TRB sequencing in the measles cohort
 
-The authoritative repository metadata is `config/analysis_metadata.csv`
-
-It is the analysis copy of the final reviewed metadata and includes library quality, final inclusion status, corrected biological patient identifiers, age groups and biological replicate handling
+The authoritative metadata is `config/analysis_metadata.csv`
 
 ## Final cohort rules
 
@@ -14,80 +12,53 @@ It is the analysis copy of the final reviewed metadata and includes library qual
 - healthy controls: `CONTROL` only
 - measles time points: T1, T2 and T3
 - T0 is not used
-- T4 is part of the intended clinical design at about six months but is not present among the current sequencing libraries
+- current accepted paired cohort: 22 T1-T2 patients, 6 children and 16 adults
 
-T1 is the early infection point after infection and before the mature adaptive response is expected to be fully developed
+T1 is early infection after infection and before the mature adaptive response is expected to be fully developed
 
 T2 is immediately after clinical recovery
 
-T3 is the follow up point about one month after recovery
+T3 is the follow-up point about one month after recovery
 
-## Two complementary established analysis designs
+## Established analyses retained for reproducibility
 
-### Cross sectional design
+The previous aaV analyses remain available
 
-All accepted T1 observations are retained even when the patient has no T2 sample
+`aaV` means CDR3 beta amino-acid sequence together with TRBV gene
 
-Healthy controls are compared with all T1 observations and separately with all T2 observations within the same age group
+The established expanded threshold is 0.10 percent of productive TRB reads
 
-Current biological observation counts after QC are
+Patient panels retain complete repertoire overlap, expanded repertoire overlap, T1 expanded-clone fate, shared expanded clones and TRBV changes
 
-| Age group | Healthy controls | T1 | T2 |
-| --- | ---: | ---: | ---: |
-| Children younger than 18 years | 4 | 27 | 8 |
-| Adults 18 years and older | 13 | 29 | 19 |
+The old exploratory group figures are not all republished. In particular, old TRBV heatmaps are excluded from the final figure tree because the specification now tests gene enrichment from the clone-level candidate table instead of selecting genes visually
 
-T1 and T2 are not treated as independent groups for a direct independent test because some observations belong to the same patient
+## Primary clone-level analysis
 
-### Paired longitudinal design
-
-The primary immune amnesia analysis uses only patients with both accepted T1 and T2 observations
-
-- children younger than 18 years: 6 paired patients
-- adults 18 years and older: 16 paired patients
-
-Clonality and Shannon diversity are calculated from the complete patient repertoire
-
-Clone overlap is calculated only among expanded clonotypes
-
-## Established expanded clonotypes
-
-An expanded clonotype is defined as an `aaV` clone with at least 0.10 percent of productive TRB reads in a biological patient observation
-
-`aaV` means CDR3 beta amino acid sequence together with TRBV gene
-
-The expanded clone filter removes the low frequency background from overlap analysis. Bulk genomic DNA TRB sequencing does not directly phenotype naive, memory or effector T cells, therefore the workflow does not label every low frequency clone as naive
-
-The established immune amnesia readouts are
-
-- T1 to T2 change in clonality
-- T1 to T2 change in Shannon diversity
-- expanded T1 clones that remain expanded at T2
-- expanded T1 clones detected at T2 below the expansion threshold
-- expanded T1 clones not detected at T2
-- expanded clone Jaccard similarity
-
-New expanded clones at T2 are exported separately for exact specificity matching against the available reference database
-
-## Additive nucleotide clone fate analysis
-
-The established aaV workflow above is preserved. A new additive analysis uses all 22 accepted paired T1 and T2 patients and tracks nucleotide clonotypes directly
-
-Primary physical tracking key
+The central data product is
 
 ```text
-CDR3 nucleotide sequence + TRBV + TRBJ
+results/current/paired_T1_clone_master_nt.csv
 ```
 
-Functional and public clone key
+One row is one T1 clonotype from one of the 22 accepted T1-T2 patients
+
+Physical tracking key
 
 ```text
-CDR3 amino acid sequence + TRBV + TRBJ
+CDR3 nucleotide + TRBV + TRBJ
 ```
 
-The primary candidate pool contains all T1 nucleotide clonotypes at or above 0.10 percent of productive TRB reads
+Functional and public-clone key
 
-Sensitivity is repeated at
+```text
+CDR3 amino acid + TRBV + TRBJ
+```
+
+For each T1 clone the table contains T1 and T2 counts and fractions, age, sequencing batch, expansion status, fate, absolute change, log2 T2 over T1 when T2 is nonzero, contraction, share of the original T1 expanded mass, sampling robustness, public/private annotation, healthy-control prevalence, available antigen annotation, sequence-neighbour cluster, T3 fate and final candidate class
+
+The primary candidate pool contains all T1 clonotypes at or above 0.10 percent
+
+Sensitivity thresholds are
 
 ```text
 0.05 percent
@@ -98,107 +69,154 @@ Sensitivity is repeated at
 1.00 percent
 ```
 
-For every T1 clonotype the new master table reports T1 and T2 counts, normalized fractions, read equivalents, complete fate, absolute change, log2 T2 over T1 when T2 is nonzero, contraction, the fraction of original T1 expanded mass, public or private status, healthy control prevalence, available exact antigen annotation, T3 fate, batch information and candidate class
-
-Zero T2 values do not receive an arbitrary pseudocount. The workflow reports a 95 percent upper detection bound based on the T2 productive read depth and an analytical `P_detection_if_unchanged`
-
-Repeated depth control uses a requested depth of 50000 productive reads and 500 iterations by default. If the shallowest accepted paired library is below the requested depth the workflow automatically uses that lower observed depth rather than upsampling
-
-The repeated sampling step is used for repertoire-level sensitivity summaries. Clone-level detection probability is calculated analytically from the binomial sampling model rather than estimated by unnecessary brute-force iterations
-
-The sampling model controls finite read depth but does not remove PCR amplification bias because these libraries do not have UMI information
-
-The nucleotide analysis also adds
-
-- public and private amino-acid clone annotation
-- prevalence among healthy controls
-- simple amino-acid sequence-neighbour clusters
-- a flag for possible clonotypic replacement when a nearby T2 sequence remains
-- patient-aware TRBV, TRBJ and CDR3 motif enrichment among lost versus retained clones
-- T3 follow-up of apparent T2 losses
-- all-pairs Morisita-Horn repertoire identity fingerprinting
-- a sensitivity summary with and without the cross-batch patient ГА1_003
-
-The sequence-neighbour clusters are deliberately not labelled TCRdist clusters. They use CDR3 amino-acid edit distance within the same TRBV and are an exploratory motif analysis
-
-HLA compatibility is reported as not available unless patient HLA typing is supplied
-
-## БА1_071 T2 biological repeat
-
-`new_106` and `new_111` are both accepted T2 libraries for patient БА1_071
-
-`new_111` is the raw sample `111_БА1_071.2а`
-
-The two libraries are not counted as two patients or two independent T2 observations
-
-For patient level analysis each library is first normalized to clonotype frequencies. Missing clones receive frequency zero in the replicate where they are absent. The normalized frequencies are then averaged. The resulting averaged repertoire is one T2 observation for patient БА1_071
-
-## Legacy cohort correction
-
-UDP0097 through UDP0105 are measles samples but UDP is an adapter identifier rather than the biological patient identifier
-
-The corrected biological patients are МР1_001, БА1_002, ГА1_003, ХИ1_004, ИМ1_005, ПИ1_006, СС1_007 and ШЕ1_008
-
-UDP0106 through UDP0112 are healthy controls CGIMU_N1 through CGIMU_N7
-
-UDP0108 remains excluded because its repertoire is unusually similar to UDP0107
-
-The legacy sample ХИ1_004.2 is T2 for the same patient as ХИ1_004.1
-
-The legacy sample ГА1_003.1 is T1 for the same patient as the new sample ГА1_003.2 at T2
-
-## Main outputs
-
-Group figures are published to
+Primary T2 fate categories are
 
 ```text
-figures/group
+retained expanded
+detected below threshold
+not detected
 ```
 
-Patient figures are published to
+A clone such as 2.0 percent at T1 and 0.03 percent at T2 is therefore represented as a strong contraction rather than collapsed into a simple shared or not-shared label
+
+Zero T2 values do not receive an arbitrary pseudocount. A 95 percent upper detection bound is reported instead
+
+## Pair-specific repeated rarefaction and internal null
+
+The authoritative depth-control analysis follows the longitudinal specification pair by pair
+
+For patient `i`
 
 ```text
+pair_depth_i = minimum productive-read depth among every accepted T1 and T2 library contributing to that patient
+```
+
+Every contributing sequencing library is sampled without replacement to that patient's `pair_depth_i`
+
+The procedure is repeated at least 500 times, with 500 as the default and 1000 supported for the final sensitivity run
+
+Observed-library rarefaction uses multivariate hypergeometric sampling without replacement
+
+For each T1 clonotype an internal unchanged-repertoire null is also evaluated repeatedly. The empirical fraction of iterations in which the clonotype would be detected at the T2 sampling effort is stored as
+
+```text
+P_detection_if_unchanged
+```
+
+A T1-expanded clone that is absent in real T2 despite empirical `P_detection_if_unchanged >= 0.99` is flagged as sampling-robust not detected
+
+The older analytical raw-depth detection probability is preserved as a separate checking column
+
+This controls finite sequencing depth but does not remove PCR amplification bias because these bulk genomic DNA libraries do not contain UMI information
+
+## БА1_071 biological repeat
+
+`new_106` and `new_111` are accepted T2 biological-repeat libraries for patient БА1_071
+
+They are not counted as two patient observations
+
+During rarefaction each library is sampled separately. Frequencies are normalized within each library and only then averaged to form one T2 biological observation
+
+## Affected-clone enrichment
+
+After pair-specific sampling correction, the enrichment analysis compares
+
+```text
+sampling-robust not detected or strong contraction
+```
+
+against
+
+```text
+retained expanded
+```
+
+TRBV, TRBJ and CDR3 amino-acid 3-mer features are tested with patient-aware binomial GEE
+
+Patient ID defines the within-patient dependence and baseline T1 clone frequency is included as a covariate
+
+The final enrichment figure is generated only when at least one feature passes FDR 0.05. Otherwise the complete numerical table is retained without a decorative plot
+
+## Sequence neighbourhoods
+
+Candidate TCRs are also grouped into exploratory amino-acid sequence neighbourhoods within the same TRBV
+
+The current implementation uses CDR3 amino-acid edit distance and is deliberately not labelled TCRdist
+
+A cross-patient neighbourhood figure is generated only if at least two affected clones occur in a cluster spanning at least two patients
+
+The table records possible clonotypic replacement when the exact clone is lost but a nearby T2 sequence remains
+
+HLA compatibility is `not available` unless patient HLA typing is supplied
+
+## T3 and identity validation
+
+Available longitudinal validation is used without inventing missing points
+
+```text
+ЭГ1_042: T1 T2 T3
+СА1_013: valid T2 T3 because T1 failed QC
+ММ1_033: valid T1 T3 because T2 failed identity QC
+```
+
+For ЭГ1_042 the workflow explicitly records T1-expanded clones absent in T2 that reappear in T3
+
+All-vs-all Morisita-Horn repertoire similarity is used for sample identity QC
+
+ГА1_003 is summarized both in the complete paired cohort and after excluding this cross-batch T1 legacy to T2 new pair
+
+## Final figure architecture
+
+The final published tree is intentionally shallow
+
+```text
+figures/main
 figures/patients
+figures/downsampling_pairwise
+figures/sensitivity_thresholds
+figures/validation
+figures/supplementary
+figures/FIGURE_INDEX.txt
 ```
 
-Final tables are stored in
+Core conclusions are limited to a small number of figures
 
 ```text
-results/current
+main/21_primary_fate_pairwise_rarefied.png
+downsampling_pairwise/22_sampling_robust_clone_loss.png
+sensitivity_thresholds/23_threshold_sensitivity_pairwise_rarefied.png
+validation/26_validation_identity_T3_batch.png
 ```
 
-Established tables include
+Two additional main figures are conditional on the data
 
 ```text
-cross_sectional_cohort_counts.csv
-cross_sectional_statistics.csv
-longitudinal_expanded_clone_summary.csv
-expanded_clone_fates.csv
-new_T2_expansions.csv
-expanded_TRBV_usage.csv
-patient_panel_index.csv
+main/24_lost_vs_retained_enrichment.png
+main/25_sequence_neighbourhoods.png
 ```
 
-Additive nucleotide clone fate tables include
+Patient panels are kept separately
+
+Supplementary contains only selected established contextual plots. Old TRBV heatmaps and duplicate exploratory plots are intentionally not republished
+
+## Main tables
 
 ```text
 paired_T1_clone_master_nt.csv
-clone_fate_threshold_sensitivity.csv
-rarefaction_summary.csv
-sequence_neighbour_cluster_summary.csv
+candidate_clones_compact.csv
+pairwise_rarefaction_summary.csv
+pairwise_threshold_sensitivity.csv
+clone_sampling_null.csv
 lost_vs_retained_feature_enrichment.csv
-T3_clone_fate_validation.csv
+sequence_neighbour_cluster_summary.csv
+extended_T3_clone_validation.csv
+extended_T3_validation_summary.csv
 repertoire_identity_morisita_matrix.csv
 repertoire_identity_qc.csv
 GA1_003_cross_batch_sensitivity.csv
-clone_fate_v2_README.txt
 ```
 
-Existing patient panels remain unchanged and continue to show complete repertoire overlap, expanded repertoire overlap, T1 expanded clone fate, shared expanded clones and TRBV changes
-
-New compact group figures are added after the established figures rather than replacing them
-
-## Refresh analysis without rerunning completed MiXCR exports
+## Run
 
 ```bash
 cd ~/measles_2026
@@ -211,32 +229,12 @@ echo "$jid"
 tail -F "logs/refresh_slurm_${jid}.out"
 ```
 
-The refresh job reuses existing MiXCR clonotype exports. The nucleotide analysis expects the existing MiXCR clone export to contain `nSeqCDR3`. If an old export lacks nucleotide CDR3 it can be re-exported from the existing `.clns` file without repeating FASTQ alignment or assembly
-
-Optional depth-control settings
+To use 1000 repeated pair-specific rarefactions
 
 ```bash
-export MEASLES_RAREFACTION_DEPTH=50000
-export MEASLES_RAREFACTION_ITERATIONS=500
-export MEASLES_RAREFACTION_SEED=1031
+export MEASLES_RAREFACTION_ITERATIONS=1000
 ```
 
-## Full run from raw FASTQ
+Completed MiXCR clonotype exports are reused. The nucleotide analysis expects `nSeqCDR3`. If an existing TSV lacks it, re-export the existing `.clns` file rather than repeating FASTQ alignment and assembly
 
-```bash
-bash run_all_from_scratch.sh
-```
-
-The full workflow uses MiXCR 4.7.0 with the project environment and the configured human DNA TCR multiplex preset
-
-## Interpretation limits
-
-Read fractions from multiplex genomic DNA TRB sequencing are relative abundance measures and can contain PCR amplification bias
-
-The expanded clone thresholds are operational repertoire thresholds, not direct cell phenotype measurements
-
-A sampling-robust loss means that simple finite read sampling is an unlikely explanation under the unchanged-frequency model. It does not by itself prove destruction of antigen-specific immune memory because trafficking, tissue redistribution, PCR bias and other biological or technical effects remain possible
-
-Exact database matching has incomplete antigen coverage. A missing match must not be interpreted as absence of biological antigen specificity
-
-See `config/SOURCE_NOTES.md` for cohort reconciliation decisions and analysis definitions
+See `RUN_GUIDE.md` for the detailed execution and verification contract
