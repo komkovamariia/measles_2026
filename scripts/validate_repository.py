@@ -166,8 +166,6 @@ for i in range(106, 113):
     if str(r.patient_id) != f"CGIMU_N{i-105}" or str(r.clinical_timepoint) != "CONTROL" or str(r.disease_status) != "healthy":
         fail(f"legacy control mapping mismatch for {lib}")
 
-# Current analysis contract. The expansion threshold grid is authoritative and shared
-# by both the pair-specific rarefaction branch and the no-downsampling Simpson branch.
 threshold_grid_token = "THRESHOLD_PCT = [0.05, 0.10] + [round(x / 10, 2) for x in range(2, 16)]"
 threshold_scripts = [
     "scripts/analysis_12_exact_rarefaction.py",
@@ -200,7 +198,7 @@ contracts = {
         "simpson_raw_threshold_sensitivity.csv",
     ],
     "scripts/analysis_15_tz_final_reporting.py": [
-        "results/final", "candidate_class_rarefied", "candidate_class_simpson_raw",
+        "FINAL = RESULTS / \"final\"", "candidate_class_rarefied", "candidate_class_simpson_raw",
         "01_shared_and_fate.png", "03_candidate_dumbbell_and_trbv.png",
     ],
     "scripts/analysis_16_extended_thresholds.py": [
