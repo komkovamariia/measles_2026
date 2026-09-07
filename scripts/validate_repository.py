@@ -202,8 +202,9 @@ contracts = {
         "01_shared_and_fate.png", "03_candidate_dumbbell_and_trbv.png",
     ],
     "scripts/analysis_16_extended_thresholds.py": [
+        "pairwise_threshold_sensitivity.csv", "simpson_raw_threshold_sensitivity.csv",
         "pairwise_rarefied", "simpson_no_downsampling", "expanded_threshold_sensitivity_extended.csv",
-        "multivariate_hypergeometric",
+        "does not repeat rarefaction",
     ],
     "scripts/analysis_17_apply_extended_thresholds.py": [
         "04_threshold_sensitivity.csv", "02_sampling_and_sensitivity.png",
