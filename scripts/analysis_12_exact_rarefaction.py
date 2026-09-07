@@ -37,7 +37,8 @@ N_ITER = int(os.environ.get("MEASLES_RAREFACTION_ITERATIONS", "500"))
 SEED = int(os.environ.get("MEASLES_RAREFACTION_SEED", "1031"))
 if N_ITER < 500:
     raise RuntimeError("Pair-specific rarefaction requires at least 500 iterations")
-THRESHOLDS = [0.0005, 0.001, 0.002, 0.005, 0.0075, 0.01]
+THRESHOLD_PCT = [0.05, 0.10] + [round(x / 10, 2) for x in range(2, 16)]
+THRESHOLDS = [x / 100.0 for x in THRESHOLD_PCT]
 PRIMARY = 0.001
 ROBUST_P = 0.99
 KEY = ["cdr3nt", "cdr3aa", "v_gene", "j_gene"]
@@ -328,7 +329,7 @@ master.to_csv(master_path, index=False)
         "Internal null: after each T1 rarefaction, clone detection in a same-depth pseudo-T2 is simulated as the exact Bernoulli detection event implied by the T1 frequency and T2 sampling effort",
         "P_detection_if_unchanged is the empirical null detection fraction across iterations",
         "Analytical raw-depth probability is retained separately in P_detection_if_unchanged_analytic_raw_depth",
-        "Threshold sensitivity: 0.05, 0.10, 0.20, 0.50, 0.75 and 1.00 percent",
+        "Threshold sensitivity: 0.05, 0.10, then 0.20 to 1.50 percent in 0.10 percentage-point steps",
         "This controls sequencing read depth only and cannot remove PCR amplification bias because UMI are absent",
     ]) + "\n",
     encoding="utf-8",
@@ -337,4 +338,5 @@ master.to_csv(master_path, index=False)
 print("Pair-specific rarefaction completed")
 print("Paired patients", len(pair_summary))
 print("Iterations", N_ITER)
+print("Thresholds percent", THRESHOLD_PCT)
 print("Pair depths", int(pair_summary.pair_rarefaction_depth.min()), "to", int(pair_summary.pair_rarefaction_depth.max()))
