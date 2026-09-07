@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def fail(msg):
     raise SystemExit(f"VALIDATION FAILED: {msg}")
 
+
 required = [
     "README.md", "RUN_GUIDE.md", "VALIDATION.md", "environment.yml",
     "config/sample_manifest.csv", "config/analysis_metadata.csv",
@@ -23,7 +24,7 @@ required = [
     "scripts/analysis_06_clinical_summary.py", "scripts/analysis_07_longitudinal_expanded.py",
     "scripts/analysis_08_final_reporting.py", "scripts/analysis_09_patient_panels.py",
     "scripts/analysis_10_clone_fate_v2.py", "scripts/analysis_11_clone_enrichment.py",
-    "scripts/analysis_12_exact_rarefaction.py",
+    "scripts/analysis_12_exact_rarefaction.py", "scripts/analysis_13_compact_reporting.py",
     "scripts/publish_current_figures.py", "scripts/run_analysis_refresh_slurm.sh",
 ]
 missing = [p for p in required if not (ROOT / p).exists()]
@@ -58,10 +59,8 @@ meta["productive_trb_clonotypes"] = pd.to_numeric(meta.productive_trb_clonotypes
 
 if len(manifest) != 112 or len(meta) != 112:
     fail(f"expected 112 libraries, found manifest {len(manifest)} metadata {len(meta)}")
-if len(manifest[manifest.batch.eq("new")]) != 96:
-    fail("expected 96 new libraries")
-if len(manifest[manifest.batch.eq("legacy")]) != 16:
-    fail("expected 16 legacy libraries")
+if len(manifest[manifest.batch.eq("new")]) != 96 or len(manifest[manifest.batch.eq("legacy")]) != 16:
+    fail("expected 96 new and 16 legacy libraries")
 if manifest.library_id.duplicated().any() or meta.library_id.duplicated().any():
     fail("library IDs must be unique")
 
@@ -134,10 +133,8 @@ if paired_counts.get("child", 0) != 6 or paired_counts.get("adult", 0) != 16:
     fail(f"expected paired cohort 6 children and 16 adults, found {paired_counts}")
 
 rep = meta[meta.replicate_group.fillna("").eq("БА1_071_T2")]
-if set(rep.library_id) != {"new_106", "new_111"}:
-    fail("БА1_071 T2 replicate group must contain new_106 and new_111")
-if not rep.passes_qc_4400.all():
-    fail("both БА1_071 T2 replicate libraries must pass final QC")
+if set(rep.library_id) != {"new_106", "new_111"} or not rep.passes_qc_4400.all():
+    fail("БА1_071 T2 replicate group must contain accepted new_106 and new_111")
 mr = manifest.set_index("library_id")
 if not bool(mr.loc["new_111", "include"]) or str(mr.loc["new_111", "clinical_timepoint"]) != "T2":
     fail("new_111 must be included as T2")
@@ -173,14 +170,31 @@ contracts = {
     "scripts/analysis_07_longitudinal_expanded.py": ["expanded_jaccard", "new_T2_expansions", "expected = 6 if age == \"child\" else 16"],
     "scripts/analysis_09_patient_panels.py": ["Expanded clonotype overlap", "EXPANDED_FRACTION = 0.001"],
     "scripts/analysis_10_clone_fate_v2.py": [
-        "PRIMARY = 0.001", "0.0005", "0.0075", "0.01",
-        "P_detection_if_unchanged", "clone_id_nt", "control_prevalence",
-        "repertoire_identity_morisita_matrix.csv", "MEASLES_RAREFACTION_ITERATIONS",
+        "PRIMARY = 0.001", "0.0005", "0.0075", "0.01", "clone_id_nt",
+        "control_prevalence", "repertoire_identity_morisita_matrix.csv",
     ],
-    "scripts/analysis_11_clone_enrichment.py": ["sm.GEE", "TRBV", "TRBJ", "CDR3_3mer"],
+    "scripts/analysis_11_clone_enrichment.py": [
+        "sampling_candidate_class", "sampling-robust not detected", "strong contraction",
+        "sm.GEE", "log10_T1_fraction", "TRBV", "TRBJ", "CDR3_3mer",
+    ],
     "scripts/analysis_12_exact_rarefaction.py": [
-        "multivariate_hypergeometric", "Simpson D", "sqrt_simpson_D",
-        "Each sequencing library is rarefied separately", "THRESHOLDS = [0.001, 0.01]",
+        "pair_depth = min", "multivariate_hypergeometric", "N_ITER < 500",
+        "P_detection_if_unchanged_empirical", "clone_sampling_null.csv",
+        "pairwise_threshold_sensitivity.csv", "0.0005", "0.0075", "0.01",
+    ],
+    "scripts/analysis_13_compact_reporting.py": [
+        "candidate_clones_compact.csv", "extended_T3_clone_validation.csv",
+        "extended_T3_validation_summary.csv", "21_primary_fate_pairwise_rarefied",
+        "22_sampling_robust_clone_loss", "23_threshold_sensitivity_pairwise_rarefied",
+        "26_validation_identity_T3_batch", "Figures 24 and 25 are conditional",
+    ],
+    "scripts/publish_current_figures.py": [
+        "downsampling_pairwise", "sensitivity_thresholds", "supplementary",
+        "Old TRBV heatmaps are intentionally excluded", "shutil.rmtree(CURRENT)",
+    ],
+    "scripts/run_analysis_refresh_slurm.sh": [
+        "PAIR_ITERATIONS", "MEASLES_RAREFACTION_ITERATIONS=1", "analysis_12_exact_rarefaction.py",
+        "analysis_11_clone_enrichment.py", "analysis_13_compact_reporting.py",
     ],
 }
 for rel, tokens in contracts.items():
@@ -195,6 +209,8 @@ print("QC threshold: 4400 productive TRB clonotypes")
 print("Age rule: child younger than 18 years, adult 18 years and older")
 print("Controls use CONTROL only")
 print("new_111 is included as a T2 biological replicate of new_106")
-print("Established expanded clone threshold: 0.10 percent of productive TRB reads")
-print("Additive clone fate v2: nucleotide tracking, threshold sensitivity and depth controls are enabled")
-print("Exact depth control: without-replacement rarefaction and Simpson metrics are enabled")
+print("Physical clone tracking: CDR3 nucleotide plus TRBV plus TRBJ")
+print("Primary expanded threshold: 0.10 percent")
+print("Pair-specific repeated rarefaction: at least 500 iterations at each pair's own common depth")
+print("Empirical internal null provides P_detection_if_unchanged")
+print("Final figure publisher uses compact shallow folders and excludes old TRBV heatmaps")
