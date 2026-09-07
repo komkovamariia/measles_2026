@@ -37,6 +37,9 @@ for name, df in [("pairwise_rarefied", rare), ("simpson_no_downsampling", raw)]:
         raise RuntimeError(f"{name} threshold grid mismatch: {sorted(observed)}")
     if df.patient.nunique() != 22:
         raise RuntimeError(f"{name} has {df.patient.nunique()} patients instead of 22")
+    per_threshold = df.groupby("threshold_percent").patient.nunique().to_dict()
+    if len(per_threshold) != len(THRESHOLD_PCT) or any(v != 22 for v in per_threshold.values()):
+        raise RuntimeError(f"{name} has incomplete patient coverage by threshold: {per_threshold}")
 
 # Harmonize schemas. Rarefied summaries have median and interval columns; the raw
 # branch has direct point estimates. Duplicate raw values into the median columns so
@@ -56,11 +59,9 @@ out = out.sort_values(["branch", "patient", "threshold_percent"]).reset_index(dr
 observed = {round(float(x), 8) for x in out.threshold_percent.dropna().unique()}
 if observed != EXPECTED:
     raise RuntimeError(f"Combined threshold grid mismatch: {sorted(observed)}")
-if out.groupby("branch").patient.nunique().to_dict() != {
-    "pairwise_rarefied": 22,
-    "simpson_no_downsampling": 22,
-}:
-    raise RuntimeError("Combined threshold table does not contain both complete branches")
+coverage = out.groupby(["branch", "threshold_percent"]).patient.nunique()
+if (coverage != 22).any():
+    raise RuntimeError(f"Combined table has incomplete branch-threshold coverage: {coverage[coverage != 22].to_dict()}")
 
 out.to_csv(RESULTS / "expanded_threshold_sensitivity_extended.csv", index=False)
 print("Full threshold grid consolidated without repeating rarefaction")
