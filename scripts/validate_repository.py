@@ -24,8 +24,9 @@ required = [
     "scripts/analysis_06_clinical_summary.py", "scripts/analysis_07_longitudinal_expanded.py",
     "scripts/analysis_08_final_reporting.py", "scripts/analysis_09_patient_panels.py",
     "scripts/analysis_10_clone_fate_v2.py", "scripts/analysis_11_clone_enrichment.py",
-    "scripts/analysis_12_exact_rarefaction.py", "scripts/analysis_13_compact_reporting.py",
-    "scripts/publish_current_figures.py", "scripts/run_analysis_refresh_slurm.sh",
+    "scripts/analysis_12_exact_rarefaction.py", "scripts/analysis_14_simpson_no_downsampling.py",
+    "scripts/analysis_15_tz_final_reporting.py", "scripts/analysis_16_extended_thresholds.py",
+    "scripts/analysis_17_apply_extended_thresholds.py", "scripts/run_analysis_refresh_slurm.sh",
 ]
 missing = [p for p in required if not (ROOT / p).exists()]
 if missing:
@@ -165,36 +166,57 @@ for i in range(106, 113):
     if str(r.patient_id) != f"CGIMU_N{i-105}" or str(r.clinical_timepoint) != "CONTROL" or str(r.disease_status) != "healthy":
         fail(f"legacy control mapping mismatch for {lib}")
 
+# Current analysis contract. The expansion threshold grid is authoritative and shared
+# by both the pair-specific rarefaction branch and the no-downsampling Simpson branch.
+threshold_grid_token = "THRESHOLD_PCT = [0.05, 0.10] + [round(x / 10, 2) for x in range(2, 16)]"
+threshold_scripts = [
+    "scripts/analysis_12_exact_rarefaction.py",
+    "scripts/analysis_14_simpson_no_downsampling.py",
+    "scripts/analysis_16_extended_thresholds.py",
+    "scripts/analysis_17_apply_extended_thresholds.py",
+]
+for rel in threshold_scripts:
+    text = (ROOT / rel).read_text(encoding="utf-8")
+    if threshold_grid_token not in text:
+        fail(f"extended threshold grid missing in {rel}")
+
 contracts = {
     "scripts/analysis_01_prepare.py": ["QC_MIN_PRODUCTIVE_CLONOTYPES = 4400", "EXPANDED_FRACTION = 0.001", "БА1_071_T2"],
     "scripts/analysis_07_longitudinal_expanded.py": ["expanded_jaccard", "new_T2_expansions", "expected = 6 if age == \"child\" else 16"],
     "scripts/analysis_09_patient_panels.py": ["Expanded clonotype overlap", "EXPANDED_FRACTION = 0.001"],
     "scripts/analysis_10_clone_fate_v2.py": [
-        "PRIMARY = 0.001", "0.0005", "0.0075", "0.01", "clone_id_nt",
-        "control_prevalence", "repertoire_identity_morisita_matrix.csv",
+        "PRIMARY = 0.001", "clone_id_nt", "control_prevalence", "repertoire_identity_morisita_matrix.csv",
     ],
     "scripts/analysis_11_clone_enrichment.py": [
         "sampling_candidate_class", "sampling-robust not detected", "strong contraction",
         "sm.GEE", "log10_T1_fraction", "TRBV", "TRBJ", "CDR3_3mer",
     ],
     "scripts/analysis_12_exact_rarefaction.py": [
-        "pair_depth = min", "multivariate_hypergeometric", "N_ITER < 500",
-        "P_detection_if_unchanged_empirical", "clone_sampling_null.csv",
-        "pairwise_threshold_sensitivity.csv", "0.0005", "0.0075", "0.01",
+        "pair_depth = min", "multivariate_hypergeometric", "N_ITER < 500", "PRIMARY = 0.001",
+        "P_detection_if_unchanged_empirical", "clone_sampling_null.csv", "pairwise_threshold_sensitivity.csv",
     ],
-    "scripts/analysis_13_compact_reporting.py": [
-        "candidate_clones_compact.csv", "extended_T3_clone_validation.csv",
-        "extended_T3_validation_summary.csv", "21_primary_fate_pairwise_rarefied",
-        "22_sampling_robust_clone_loss", "23_threshold_sensitivity_pairwise_rarefied",
-        "26_validation_identity_T3_batch", "Figures 24 and 25 are conditional",
+    "scripts/analysis_14_simpson_no_downsampling.py": [
+        "PRIMARY = 0.001", "simpson_D", "simpson_clonality", "normalized_richness",
+        "simpson_raw_threshold_sensitivity.csv",
     ],
-    "scripts/publish_current_figures.py": [
-        "downsampling_pairwise", "sensitivity_thresholds", "supplementary",
-        "Old TRBV heatmaps are intentionally excluded", "shutil.rmtree(CURRENT)",
+    "scripts/analysis_15_tz_final_reporting.py": [
+        "results/final", "candidate_class_rarefied", "candidate_class_simpson_raw",
+        "01_shared_and_fate.png", "03_candidate_dumbbell_and_trbv.png",
+    ],
+    "scripts/analysis_16_extended_thresholds.py": [
+        "pairwise_rarefied", "simpson_no_downsampling", "expanded_threshold_sensitivity_extended.csv",
+        "multivariate_hypergeometric",
+    ],
+    "scripts/analysis_17_apply_extended_thresholds.py": [
+        "04_threshold_sensitivity.csv", "02_sampling_and_sensitivity.png",
+        "Threshold sensitivity from 0.05 to 1.50 percent",
     ],
     "scripts/run_analysis_refresh_slurm.sh": [
         "PAIR_ITERATIONS", "MEASLES_RAREFACTION_ITERATIONS=1", "analysis_12_exact_rarefaction.py",
-        "analysis_11_clone_enrichment.py", "analysis_13_compact_reporting.py",
+        "analysis_11_clone_enrichment.py", "analysis_14_simpson_no_downsampling.py",
+        "analysis_16_extended_thresholds.py", "analysis_15_tz_final_reporting.py",
+        "analysis_17_apply_extended_thresholds.py",
+        "Final sensitivity thresholds: 0.05 0.10 and 0.20 to 1.50 percent in 0.10 percentage-point steps",
     ],
 }
 for rel, tokens in contracts.items():
@@ -211,6 +233,7 @@ print("Controls use CONTROL only")
 print("new_111 is included as a T2 biological replicate of new_106")
 print("Physical clone tracking: CDR3 nucleotide plus TRBV plus TRBJ")
 print("Primary expanded threshold: 0.10 percent")
+print("Sensitivity thresholds: 0.05, 0.10, then 0.20 to 1.50 percent in 0.10 percentage-point steps")
 print("Pair-specific repeated rarefaction: at least 500 iterations at each pair's own common depth")
 print("Empirical internal null provides P_detection_if_unchanged")
-print("Final figure publisher uses compact shallow folders and excludes old TRBV heatmaps")
+print("No-downsampling Simpson branch uses the same expansion-threshold grid")
