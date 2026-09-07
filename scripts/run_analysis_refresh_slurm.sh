@@ -38,14 +38,12 @@ echo "Established expanded clone threshold: 0.10 percent of productive TRB reads
 echo "Additive nucleotide clone fate analysis keeps the established aaV analysis unchanged"
 echo "Nucleotide candidate thresholds: 0.05 0.10 0.20 0.50 0.75 1.00 percent"
 echo "Requested depth control: ${MEASLES_RAREFACTION_DEPTH} productive reads, ${MEASLES_RAREFACTION_ITERATIONS} iterations"
-echo "БА1_071 T2: new_106 and new_111 are averaged after within library normalization"
+echo "Exact rarefaction samples observed reads without replacement within each sequencing library"
+echo "БА1_071 T2: new_106 and new_111 are normalized separately and averaged as one biological T2 point"
 echo "Completed MiXCR exports are reused"
 
 python scripts/validate_repository.py
 
-# The resolved biological repeat new_111 must have a MiXCR export.
-# Existing exports are reused. If this one export is missing, preprocessing resumes
-# and MiXCR skips every already valid library.
 if [[ ! -s results/clonotypes/new_111.tsv ]]; then
   echo "new_111 clonotype export is missing. Resuming preprocessing for missing exports"
   export MEASLES_NEW_FASTQ_DIR="${MEASLES_NEW_FASTQ_DIR:-/projects/mice_transplant_2025/raw/20260817_161454/Fastq}"
@@ -67,6 +65,7 @@ python scripts/analysis_08_final_reporting.py
 python scripts/analysis_09_patient_panels.py
 python scripts/analysis_10_clone_fate_v2.py
 python scripts/analysis_11_clone_enrichment.py
+python scripts/analysis_12_exact_rarefaction.py
 python scripts/publish_current_figures.py
 
 python - <<'PY'
@@ -101,6 +100,10 @@ missing_cols = sorted(required_master - set(master.columns))
 if missing_cols:
     raise SystemExit(f'Nucleotide clone master table is missing columns: {missing_cols}')
 
+rare = pd.read_csv('results/current/exact_rarefaction_summary.csv')
+if rare.patient.nunique() != 22:
+    raise SystemExit(f'Exact rarefaction summary has {rare.patient.nunique()} patients instead of 22')
+
 required = [
     'figures/FIGURE_INDEX.txt',
     'figures/group/01_cross_sectional_clonality_children.png',
@@ -111,6 +114,8 @@ required = [
     'figures/group/06_expanded_clone_fate_adults.png',
     'figures/group/14_clone_fate_v2_overview.png',
     'figures/group/17_repertoire_identity_fingerprint.png',
+    'figures/group/19_exact_rarefaction_repertoire_metrics.png',
+    'figures/group/20_exact_rarefaction_expanded_overlap.png',
     'results/current/cross_sectional_statistics.csv',
     'results/current/longitudinal_expanded_clone_summary.csv',
     'results/current/new_T2_expansions.csv',
@@ -118,6 +123,7 @@ required = [
     'results/current/paired_T1_clone_master_nt.csv',
     'results/current/clone_fate_threshold_sensitivity.csv',
     'results/current/rarefaction_summary.csv',
+    'results/current/exact_rarefaction_summary.csv',
     'results/current/repertoire_identity_qc.csv',
     'results/current/GA1_003_cross_batch_sensitivity.csv',
 ]
