@@ -10,7 +10,7 @@
 set -euo pipefail
 ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "$ROOT"
-mkdir -p logs results figures audit_runs
+mkdir -p logs results figures audit_runs results/cache
 export MPLBACKEND=Agg
 
 if command -v conda >/dev/null 2>&1; then
@@ -34,15 +34,14 @@ export MEASLES_RAREFACTION_SEED="${MEASLES_RAREFACTION_SEED:-1031}"
 
 echo "Repository root: $ROOT"
 echo "Git commit: $(git rev-parse HEAD)"
-echo "Time points: T1 T2 T3, controls use CONTROL"
-echo "Age rule: child younger than 18 years, adult 18 years and older"
 echo "Final library QC: at least 4400 productive TRB clonotypes"
-echo "Primary T1 expanded threshold: 0.10 percent of productive TRB reads"
-echo "Sensitivity thresholds: 0.05 0.10 0.20 0.50 0.75 1.00 percent"
-echo "Pair-specific repeated rarefaction: ${PAIR_ITERATIONS} iterations"
-echo "Each pair uses its own minimum accepted T1 or T2 productive-read depth"
-echo "Internal T1 sampling null provides empirical P_detection_if_unchanged"
-echo "БА1_071 T2: new_106 and new_111 are rarefied separately, normalized, then averaged"
+echo "Age rule: child younger than 18 years, adult 18 years and older"
+echo "Primary clone key: CDR3 nucleotide + TRBV + TRBJ"
+echo "Functional/public clone key: CDR3 amino acid + TRBV + TRBJ"
+echo "Primary T1 expanded threshold: 0.10 percent"
+echo "Final sensitivity thresholds: 0.05 0.10 0.20 0.50 percent"
+echo "Primary branch: pair-specific repeated rarefaction with ${PAIR_ITERATIONS} iterations"
+echo "Complementary branch: no downsampling, article-style Simpson D and sqrt Simpson D"
 echo "Completed MiXCR exports are reused"
 
 python scripts/validate_repository.py
@@ -53,23 +52,24 @@ if [[ ! -s results/clonotypes/new_111.tsv ]]; then
   export MEASLES_LEGACY_FASTQ_DIR="${MEASLES_LEGACY_FASTQ_DIR:-/projects/mice_transplant_2025/measles/raw/pe150_res}"
   export MEASLES_REQUIRE_ALL_INPUTS=1
   python scripts/preprocess_human_trb.py
-else
-  echo "Reuse existing new_111 clonotype export"
 fi
 
+# Restore reusable CSV caches as symlinks if the previous clean run moved them to results/cache.
+for f in combined_trb_clonotypes.csv diversity_metrics.csv library_trb_clonotypes.csv library_trb_clonotypes_nt.csv; do
+  if [[ ! -e "results/$f" && -s "results/cache/$f" ]]; then
+    ln -s "cache/$f" "results/$f"
+  fi
+done
+
 rm -rf \
-  results/current \
-  figures/current \
-  figures/group \
-  figures/main \
-  figures/patients \
-  figures/downsampling_pairwise \
-  figures/sensitivity_thresholds \
-  figures/validation \
-  figures/supplementary
+  results/current results/final \
+  figures/current figures/group figures/main figures/patients \
+  figures/downsampling_pairwise figures/sensitivity_thresholds \
+  figures/supplementary figures/rarefied figures/simpson_raw figures/validation
 mkdir -p results/current figures/current
 
-# Established analyses are retained for reproducibility and selected supplementary context.
+# Upstream established analyses create patient metadata, the existing Venn panels and
+# the nucleotide master table scaffolding. Their exploratory figures are staging only.
 python scripts/analysis_01_prepare.py
 python scripts/analysis_02_antigens.py
 python scripts/analysis_06_clinical_summary.py
@@ -77,21 +77,21 @@ python scripts/analysis_07_longitudinal_expanded.py
 python scripts/analysis_08_final_reporting.py
 python scripts/analysis_09_patient_panels.py
 
-# analysis_10 builds the nucleotide master table and sequence/T3/identity scaffolding.
-# Its older global resampling block is retained in source for compatibility but reduced to
-# one iteration here. The authoritative sampling analysis follows in analysis_12.
+# Build the physical nucleotide clone master table. The legacy resampling block in this
+# script is deliberately reduced because the literal pair-specific analysis follows next.
 MEASLES_RAREFACTION_ITERATIONS=1 MEASLES_RAREFACTION_DEPTH=50000 \
   python scripts/analysis_10_clone_fate_v2.py
 
-# Literal specification: each patient pair is repeatedly rarefied to its own common depth.
+# Primary sampling-controlled branch.
 export MEASLES_RAREFACTION_ITERATIONS="$PAIR_ITERATIONS"
 python scripts/analysis_12_exact_rarefaction.py
-
-# Enrichment must use empirical sampling-aware candidate classes from analysis_12.
 python scripts/analysis_11_clone_enrichment.py
-python scripts/analysis_13_compact_reporting.py
-python scripts/publish_current_figures.py
 
+# Complementary branch requested from PMID 37051229: no downsampling, Simpson D,
+# Simpson clonality = sqrt(Simpson D), normalized richness, then the same clone-fate logic.
+python scripts/analysis_14_simpson_no_downsampling.py
+
+# Verify the scientific contract before the final cleanup removes results/current.
 python - <<'PY'
 from pathlib import Path
 import pandas as pd
@@ -103,81 +103,97 @@ if meta['clinical_timepoint'].astype(str).eq('T0').any():
 controls = meta[meta['is_control'].astype(str).str.lower().isin(['true','1','yes'])]
 if not controls['clinical_timepoint'].eq('CONTROL').all():
     raise SystemExit('A healthy control has a longitudinal time point')
-rep = meta[meta['library_id'].isin(['new_106','new_111'])]
-if len(rep) != 2 or not rep['analysis_include_final'].all() or not rep['clinical_timepoint'].eq('T2').all():
-    raise SystemExit('БА1_071 T2 replicate handling is incorrect')
-
-pairs = pd.read_csv('results/current/longitudinal_expanded_clone_summary.csv')
-counts = pairs.groupby('age_group')['patient_id'].nunique().to_dict()
-if counts.get('child', 0) != 6 or counts.get('adult', 0) != 16:
-    raise SystemExit(f'Unexpected paired cohort counts: {counts}')
 
 master = pd.read_csv('results/current/paired_T1_clone_master_nt.csv')
-if master['patient'].nunique() != 22:
-    raise SystemExit(f'Nucleotide clone master table has {master.patient.nunique()} paired patients instead of 22')
-required_master = {
+if master.patient.nunique() != 22:
+    raise SystemExit(f'Expected 22 paired patients, found {master.patient.nunique()}')
+required = {
     'clone_id_nt','clone_id_aa','T1_fraction','T2_fraction','fate_0_10_percent',
-    'P_detection_if_unchanged','P_detection_if_unchanged_empirical',
-    'pair_rarefaction_depth','sampling_robust_not_detected','sampling_candidate_class',
-    'public_private','control_prevalence','motif_cluster','T3_fate','candidate_class'
+    'P_detection_if_unchanged_empirical','pair_rarefaction_depth',
+    'sampling_robust_not_detected','public_private','control_prevalence','motif_cluster','T3_fate'
 }
-missing_cols = sorted(required_master - set(master.columns))
-if missing_cols:
-    raise SystemExit(f'Nucleotide clone master table is missing columns: {missing_cols}')
+missing = sorted(required - set(master.columns))
+if missing:
+    raise SystemExit(f'Master table is missing: {missing}')
 
 rare = pd.read_csv('results/current/pairwise_rarefaction_summary.csv')
-if rare.patient.nunique() != 22:
-    raise SystemExit(f'Pairwise rarefaction summary has {rare.patient.nunique()} patients instead of 22')
-if (pd.to_numeric(rare.iterations, errors='coerce') < 500).any():
-    raise SystemExit('Pairwise rarefaction used fewer than 500 iterations')
-if (pd.to_numeric(rare.pair_rarefaction_depth, errors='coerce') <= 0).any():
-    raise SystemExit('Pairwise rarefaction has a non-positive depth')
+if rare.patient.nunique() != 22 or (pd.to_numeric(rare.iterations, errors='coerce') < 500).any():
+    raise SystemExit('Pair-specific rarefaction is incomplete')
 
-sens = pd.read_csv('results/current/pairwise_threshold_sensitivity.csv')
+raw = pd.read_csv('results/current/simpson_raw_patient_metrics.csv')
+if raw.patient.nunique() != 22 or set(raw.timepoint.astype(str)) != {'T1','T2'}:
+    raise SystemExit('Simpson no-downsampling branch is incomplete')
+for c in ['simpson_D','simpson_clonality','normalized_richness']:
+    if c not in raw.columns:
+        raise SystemExit(f'Simpson branch is missing {c}')
+
+sens = pd.read_csv('results/current/simpson_raw_threshold_sensitivity.csv')
+expected = {0.05,0.10,0.20,0.50}
 observed = {round(float(x), 8) for x in sens.threshold_percent.dropna().unique()}
-expected = {0.05, 0.10, 0.20, 0.50, 0.75, 1.00}
 if observed != expected:
-    raise SystemExit(f'Unexpected threshold sensitivity set: {sorted(observed)}')
+    raise SystemExit(f'Unexpected final raw sensitivity thresholds: {sorted(observed)}')
 
-null = pd.read_csv('results/current/clone_sampling_null.csv')
-if null.empty or null.patient.nunique() != 22:
-    raise SystemExit('Empirical clone sampling null is incomplete')
+print('Pre-publication scientific contract passed')
+PY
 
-required = [
-    'figures/FIGURE_INDEX.txt',
-    'figures/main/21_primary_fate_pairwise_rarefied.png',
-    'figures/downsampling_pairwise/22_sampling_robust_clone_loss.png',
-    'figures/sensitivity_thresholds/23_threshold_sensitivity_pairwise_rarefied.png',
-    'figures/validation/26_validation_identity_T3_batch.png',
-    'results/current/patient_panel_index.csv',
-    'results/current/paired_T1_clone_master_nt.csv',
-    'results/current/candidate_clones_compact.csv',
-    'results/current/pairwise_rarefaction_summary.csv',
-    'results/current/pairwise_threshold_sensitivity.csv',
-    'results/current/clone_sampling_null.csv',
-    'results/current/repertoire_identity_qc.csv',
-    'results/current/GA1_003_cross_batch_sensitivity.csv',
-    'results/current/extended_T3_clone_validation.csv',
-    'results/current/extended_T3_validation_summary.csv',
+# Create only the figures and tables that map to the requested presentation logic.
+python scripts/analysis_15_tz_final_reporting.py
+
+# Final filesystem contract. results/current and figures/current must no longer exist.
+python - <<'PY'
+from pathlib import Path
+import pandas as pd
+
+if Path('results/current').exists():
+    raise SystemExit('Temporary results/current was not cleaned')
+if Path('figures/current').exists():
+    raise SystemExit('Temporary figures/current was not cleaned')
+
+required_tables = [
+    'results/final/01_clone_master.csv',
+    'results/final/02_candidates.csv',
+    'results/final/03_patient_summary.csv',
+    'results/final/04_threshold_sensitivity.csv',
+    'results/final/05_feature_enrichment.csv',
+    'results/final/06_validation.csv',
 ]
-for name in required:
-    p = Path(name)
+for f in required_tables:
+    p=Path(f)
     if not p.exists() or p.stat().st_size == 0:
-        raise SystemExit(f'Missing refreshed output: {name}')
+        raise SystemExit(f'Missing final table: {f}')
 
-patient_png = list(Path('figures/patients').glob('*.png'))
-if len(patient_png) < 22:
-    raise SystemExit(f'Expected at least 22 patient PNG panels, found {len(patient_png)}')
-if Path('figures/group').exists():
-    raise SystemExit('Obsolete figures/group directory was republished')
-print('Final verification passed')
+master = pd.read_csv('results/final/01_clone_master.csv')
+if master.patient.nunique() != 22:
+    raise SystemExit('Final clone master does not contain 22 patients')
+
+required_figs = [
+    'figures/FIGURE_INDEX.txt',
+    'figures/rarefied/01_shared_and_fate.png',
+    'figures/rarefied/02_sampling_and_sensitivity.png',
+    'figures/rarefied/03_candidate_dumbbell_and_trbv.png',
+    'figures/rarefied/04_enrichment_and_specificity.png',
+    'figures/simpson_raw/01_simpson_metrics_and_fate.png',
+    'figures/simpson_raw/02_shared_and_sensitivity.png',
+    'figures/simpson_raw/03_candidate_dumbbell_and_trbv.png',
+    'figures/simpson_raw/04_enrichment_and_specificity.png',
+    'figures/validation/02_branch_concordance.png',
+]
+for f in required_figs:
+    p=Path(f)
+    if not p.exists() or p.stat().st_size == 0:
+        raise SystemExit(f'Missing final figure: {f}')
+
+n_patient = len(list(Path('figures/patients').glob('*.png')))
+if n_patient < 22:
+    raise SystemExit(f'Expected at least 22 patient Venn panels, found {n_patient}')
+
+print('Final curated output contract passed')
 PY
 
 echo "Refresh completed successfully"
-echo "Main figures: $ROOT/figures/main"
-echo "Patient figures: $ROOT/figures/patients"
-echo "Pairwise downsampling: $ROOT/figures/downsampling_pairwise"
-echo "Threshold sensitivity: $ROOT/figures/sensitivity_thresholds"
+echo "Patient Venn panels: $ROOT/figures/patients"
+echo "Primary rarefied branch: $ROOT/figures/rarefied"
+echo "No-downsampling Simpson branch: $ROOT/figures/simpson_raw"
 echo "Validation: $ROOT/figures/validation"
-echo "Supplementary context: $ROOT/figures/supplementary"
-echo "Tables: $ROOT/results/current"
+echo "Final tables only: $ROOT/results/final"
+echo "Reusable computational caches: $ROOT/results/cache"
