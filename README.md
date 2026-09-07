@@ -41,7 +41,19 @@ Final sensitivity thresholds:
 0.05 percent
 0.10 percent
 0.20 percent
+0.30 percent
+0.40 percent
 0.50 percent
+0.60 percent
+0.70 percent
+0.80 percent
+0.90 percent
+1.00 percent
+1.10 percent
+1.20 percent
+1.30 percent
+1.40 percent
+1.50 percent
 ```
 
 For every primary T1-expanded clone the workflow distinguishes:
@@ -86,7 +98,7 @@ Simpson clonality = sqrt(Simpson D)
 normalized richness = unique productive clonotypes / total productive TRB reads
 ```
 
-The paper also emphasizes top-expanded clonotypes above 1 percent. The workflow records the mass of such clones as article-style context, while the clone-fate analysis itself keeps the 0.10 percent primary threshold with 0.05, 0.20 and 0.50 percent sensitivity checks.
+The paper also emphasizes top-expanded clonotypes above 1 percent. The workflow records the mass of such clones as article-style context, while the clone-fate analysis itself keeps the 0.10 percent primary threshold and applies the full 0.05 to 1.50 percent sensitivity grid.
 
 The same T1-to-T2 fate, direction, candidate, enrichment and specificity logic is repeated in this branch without downsampling.
 
