@@ -23,6 +23,7 @@ required = [
     "scripts/analysis_06_clinical_summary.py", "scripts/analysis_07_longitudinal_expanded.py",
     "scripts/analysis_08_final_reporting.py", "scripts/analysis_09_patient_panels.py",
     "scripts/analysis_10_clone_fate_v2.py", "scripts/analysis_11_clone_enrichment.py",
+    "scripts/analysis_12_exact_rarefaction.py",
     "scripts/publish_current_figures.py", "scripts/run_analysis_refresh_slurm.sh",
 ]
 missing = [p for p in required if not (ROOT / p).exists()]
@@ -177,6 +178,10 @@ contracts = {
         "repertoire_identity_morisita_matrix.csv", "MEASLES_RAREFACTION_ITERATIONS",
     ],
     "scripts/analysis_11_clone_enrichment.py": ["sm.GEE", "TRBV", "TRBJ", "CDR3_3mer"],
+    "scripts/analysis_12_exact_rarefaction.py": [
+        "multivariate_hypergeometric", "Simpson D", "sqrt_simpson_D",
+        "Each sequencing library is rarefied separately", "THRESHOLDS = [0.001, 0.01]",
+    ],
 }
 for rel, tokens in contracts.items():
     text = (ROOT / rel).read_text(encoding="utf-8")
@@ -192,3 +197,4 @@ print("Controls use CONTROL only")
 print("new_111 is included as a T2 biological replicate of new_106")
 print("Established expanded clone threshold: 0.10 percent of productive TRB reads")
 print("Additive clone fate v2: nucleotide tracking, threshold sensitivity and depth controls are enabled")
+print("Exact depth control: without-replacement rarefaction and Simpson metrics are enabled")
