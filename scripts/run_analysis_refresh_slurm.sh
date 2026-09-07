@@ -2,7 +2,7 @@
 #SBATCH --job-name=measles_refresh
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --partition=medium
 #SBATCH --constraint=hpc
 #SBATCH --output=logs/refresh_slurm_%j.out
@@ -25,19 +25,25 @@ else
 fi
 conda activate measles-tcr-2026
 export MEASLES_REPO="$ROOT"
+export MEASLES_RAREFACTION_DEPTH="${MEASLES_RAREFACTION_DEPTH:-50000}"
+export MEASLES_RAREFACTION_ITERATIONS="${MEASLES_RAREFACTION_ITERATIONS:-500}"
+export MEASLES_RAREFACTION_SEED="${MEASLES_RAREFACTION_SEED:-1031}"
 
 echo "Repository root: $ROOT"
 echo "Git commit: $(git rev-parse HEAD)"
 echo "Time points: T1 T2 T3, controls use CONTROL"
 echo "Age rule: child younger than 18 years, adult 18 years and older"
 echo "Final library QC: at least 4400 productive TRB clonotypes"
-echo "Expanded clone threshold: 0.10 percent of productive TRB reads"
+echo "Established expanded clone threshold: 0.10 percent of productive TRB reads"
+echo "Additive nucleotide clone fate analysis keeps the established aaV analysis unchanged"
+echo "Nucleotide candidate thresholds: 0.05 0.10 0.20 0.50 0.75 1.00 percent"
+echo "Requested depth control: ${MEASLES_RAREFACTION_DEPTH} productive reads, ${MEASLES_RAREFACTION_ITERATIONS} iterations"
 echo "БА1_071 T2: new_106 and new_111 are averaged after within library normalization"
-echo "MiXCR will not be rerun"
+echo "Completed MiXCR exports are reused"
 
 python scripts/validate_repository.py
 
-# The newly resolved biological repeat new_111 must have a MiXCR export.
+# The resolved biological repeat new_111 must have a MiXCR export.
 # Existing exports are reused. If this one export is missing, preprocessing resumes
 # and MiXCR skips every already valid library.
 if [[ ! -s results/clonotypes/new_111.tsv ]]; then
@@ -59,6 +65,8 @@ python scripts/analysis_06_clinical_summary.py
 python scripts/analysis_07_longitudinal_expanded.py
 python scripts/analysis_08_final_reporting.py
 python scripts/analysis_09_patient_panels.py
+python scripts/analysis_10_clone_fate_v2.py
+python scripts/analysis_11_clone_enrichment.py
 python scripts/publish_current_figures.py
 
 python - <<'PY'
@@ -81,6 +89,18 @@ counts = pairs.groupby('age_group')['patient_id'].nunique().to_dict()
 if counts.get('child', 0) != 6 or counts.get('adult', 0) != 16:
     raise SystemExit(f'Unexpected paired cohort counts: {counts}')
 
+master = pd.read_csv('results/current/paired_T1_clone_master_nt.csv')
+if master['patient'].nunique() != 22:
+    raise SystemExit(f'Nucleotide clone master table has {master.patient.nunique()} paired patients instead of 22')
+required_master = {
+    'clone_id_nt','clone_id_aa','T1_fraction','T2_fraction','fate_0_10_percent',
+    'P_detection_if_unchanged','sampling_robust_not_detected','public_private',
+    'control_prevalence','motif_cluster','T3_fate','candidate_class'
+}
+missing_cols = sorted(required_master - set(master.columns))
+if missing_cols:
+    raise SystemExit(f'Nucleotide clone master table is missing columns: {missing_cols}')
+
 required = [
     'figures/FIGURE_INDEX.txt',
     'figures/group/01_cross_sectional_clonality_children.png',
@@ -89,10 +109,17 @@ required = [
     'figures/group/04_paired_clonality_adults.png',
     'figures/group/06_expanded_clone_fate_children.png',
     'figures/group/06_expanded_clone_fate_adults.png',
+    'figures/group/14_clone_fate_v2_overview.png',
+    'figures/group/17_repertoire_identity_fingerprint.png',
     'results/current/cross_sectional_statistics.csv',
     'results/current/longitudinal_expanded_clone_summary.csv',
     'results/current/new_T2_expansions.csv',
     'results/current/patient_panel_index.csv',
+    'results/current/paired_T1_clone_master_nt.csv',
+    'results/current/clone_fate_threshold_sensitivity.csv',
+    'results/current/rarefaction_summary.csv',
+    'results/current/repertoire_identity_qc.csv',
+    'results/current/GA1_003_cross_batch_sensitivity.csv',
 ]
 for name in required:
     p = Path(name)
