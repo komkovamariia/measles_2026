@@ -54,10 +54,10 @@ if [[ ! -s results/clonotypes/new_111.tsv ]]; then
   python scripts/preprocess_human_trb.py
 fi
 
-# Restore reusable CSV caches as symlinks if the previous clean run moved them to results/cache.
+# Restore reusable computational caches if a previous clean run moved them out of the root.
 for f in combined_trb_clonotypes.csv diversity_metrics.csv library_trb_clonotypes.csv library_trb_clonotypes_nt.csv; do
   if [[ ! -e "results/$f" && -s "results/cache/$f" ]]; then
-    ln -s "cache/$f" "results/$f"
+    cp -f "results/cache/$f" "results/$f"
   fi
 done
 
@@ -68,8 +68,6 @@ rm -rf \
   figures/supplementary figures/rarefied figures/simpson_raw figures/validation
 mkdir -p results/current figures/current
 
-# Upstream established analyses create patient metadata, the existing Venn panels and
-# the nucleotide master table scaffolding. Their exploratory figures are staging only.
 python scripts/analysis_01_prepare.py
 python scripts/analysis_02_antigens.py
 python scripts/analysis_06_clinical_summary.py
@@ -77,23 +75,15 @@ python scripts/analysis_07_longitudinal_expanded.py
 python scripts/analysis_08_final_reporting.py
 python scripts/analysis_09_patient_panels.py
 
-# Build the physical nucleotide clone master table. The legacy resampling block in this
-# script is deliberately reduced because the literal pair-specific analysis follows next.
 MEASLES_RAREFACTION_ITERATIONS=1 MEASLES_RAREFACTION_DEPTH=50000 \
   python scripts/analysis_10_clone_fate_v2.py
 
-# Primary sampling-controlled branch.
 export MEASLES_RAREFACTION_ITERATIONS="$PAIR_ITERATIONS"
 python scripts/analysis_12_exact_rarefaction.py
 python scripts/analysis_11_clone_enrichment.py
-
-# Complementary branch requested from PMID 37051229: no downsampling, Simpson D,
-# Simpson clonality = sqrt(Simpson D), normalized richness, then the same clone-fate logic.
 python scripts/analysis_14_simpson_no_downsampling.py
 
-# Verify the scientific contract before the final cleanup removes results/current.
 python - <<'PY'
-from pathlib import Path
 import pandas as pd
 
 meta = pd.read_csv('results/current/sample_metadata_current.csv')
@@ -136,10 +126,8 @@ if observed != expected:
 print('Pre-publication scientific contract passed')
 PY
 
-# Create only the figures and tables that map to the requested presentation logic.
 python scripts/analysis_15_tz_final_reporting.py
 
-# Final filesystem contract. results/current and figures/current must no longer exist.
 python - <<'PY'
 from pathlib import Path
 import pandas as pd
