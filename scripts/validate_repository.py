@@ -22,6 +22,7 @@ required = [
     "scripts/analysis_01_prepare.py", "scripts/analysis_02_antigens.py",
     "scripts/analysis_06_clinical_summary.py", "scripts/analysis_07_longitudinal_expanded.py",
     "scripts/analysis_08_final_reporting.py", "scripts/analysis_09_patient_panels.py",
+    "scripts/analysis_10_clone_fate_v2.py", "scripts/analysis_11_clone_enrichment.py",
     "scripts/publish_current_figures.py", "scripts/run_analysis_refresh_slurm.sh",
 ]
 missing = [p for p in required if not (ROOT / p).exists()]
@@ -120,6 +121,17 @@ for key, expected in expected_counts.items():
     if got != expected:
         fail(f"unexpected cohort count for {key}: expected {expected}, found {got}")
 
+paired = []
+for patient, z in obs[obs.disease_status.eq("measles")].groupby("patient_id"):
+    if {"T1", "T2"}.issubset(set(z.clinical_timepoint.astype(str))):
+        paired.append(str(patient))
+if len(paired) != 22:
+    fail(f"expected 22 paired T1-T2 patients, found {len(paired)}")
+paired_meta = obs[obs.patient_id.astype(str).isin(paired)]
+paired_counts = paired_meta.drop_duplicates("patient_id").age_group.value_counts().to_dict()
+if paired_counts.get("child", 0) != 6 or paired_counts.get("adult", 0) != 16:
+    fail(f"expected paired cohort 6 children and 16 adults, found {paired_counts}")
+
 rep = meta[meta.replicate_group.fillna("").eq("БА1_071_T2")]
 if set(rep.library_id) != {"new_106", "new_111"}:
     fail("БА1_071 T2 replicate group must contain new_106 and new_111")
@@ -159,6 +171,12 @@ contracts = {
     "scripts/analysis_01_prepare.py": ["QC_MIN_PRODUCTIVE_CLONOTYPES = 4400", "EXPANDED_FRACTION = 0.001", "БА1_071_T2"],
     "scripts/analysis_07_longitudinal_expanded.py": ["expanded_jaccard", "new_T2_expansions", "expected = 6 if age == \"child\" else 16"],
     "scripts/analysis_09_patient_panels.py": ["Expanded clonotype overlap", "EXPANDED_FRACTION = 0.001"],
+    "scripts/analysis_10_clone_fate_v2.py": [
+        "PRIMARY = 0.001", "0.0005", "0.0075", "0.01",
+        "P_detection_if_unchanged", "clone_id_nt", "control_prevalence",
+        "repertoire_identity_morisita_matrix.csv", "MEASLES_RAREFACTION_ITERATIONS",
+    ],
+    "scripts/analysis_11_clone_enrichment.py": ["sm.GEE", "TRBV", "TRBJ", "CDR3_3mer"],
 }
 for rel, tokens in contracts.items():
     text = (ROOT / rel).read_text(encoding="utf-8")
@@ -172,4 +190,5 @@ print("QC threshold: 4400 productive TRB clonotypes")
 print("Age rule: child younger than 18 years, adult 18 years and older")
 print("Controls use CONTROL only")
 print("new_111 is included as a T2 biological replicate of new_106")
-print("Expanded clone threshold: 0.10 percent of productive TRB reads")
+print("Established expanded clone threshold: 0.10 percent of productive TRB reads")
+print("Additive clone fate v2: nucleotide tracking, threshold sensitivity and depth controls are enabled")
