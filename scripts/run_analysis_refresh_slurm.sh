@@ -39,7 +39,7 @@ echo "Age rule: child younger than 18 years, adult 18 years and older"
 echo "Primary clone key: CDR3 nucleotide + TRBV + TRBJ"
 echo "Functional/public clone key: CDR3 amino acid + TRBV + TRBJ"
 echo "Primary T1 expanded threshold: 0.10 percent"
-echo "Final sensitivity thresholds: 0.05 0.10 0.20 0.50 percent"
+echo "Final sensitivity thresholds: 0.05 0.10 and 0.20 to 1.50 percent in 0.10 percentage-point steps"
 echo "Primary branch: pair-specific repeated rarefaction with ${PAIR_ITERATIONS} iterations"
 echo "Complementary branch: no downsampling, article-style Simpson D and sqrt Simpson D"
 echo "Completed MiXCR exports are reused"
@@ -66,6 +66,7 @@ rm -rf \
   figures/current figures/group figures/main figures/patients \
   figures/downsampling_pairwise figures/sensitivity_thresholds \
   figures/supplementary figures/rarefied figures/simpson_raw figures/validation
+rm -f results/expanded_threshold_sensitivity_extended.csv
 mkdir -p results/current figures/current
 
 python scripts/analysis_01_prepare.py
@@ -82,6 +83,8 @@ export MEASLES_RAREFACTION_ITERATIONS="$PAIR_ITERATIONS"
 python scripts/analysis_12_exact_rarefaction.py
 python scripts/analysis_11_clone_enrichment.py
 python scripts/analysis_14_simpson_no_downsampling.py
+# Authoritative threshold grid for both branches: 0.05, 0.10, 0.20, 0.30 ... 1.50 percent.
+python scripts/analysis_16_extended_thresholds.py
 
 python - <<'PY'
 import pandas as pd
@@ -117,16 +120,20 @@ for c in ['simpson_D','simpson_clonality','normalized_richness']:
     if c not in raw.columns:
         raise SystemExit(f'Simpson branch is missing {c}')
 
-sens = pd.read_csv('results/current/simpson_raw_threshold_sensitivity.csv')
-expected = {0.05,0.10,0.20,0.50}
-observed = {round(float(x), 8) for x in sens.threshold_percent.dropna().unique()}
+extended = pd.read_csv('results/expanded_threshold_sensitivity_extended.csv')
+expected = {0.05,0.10,*[round(x/10,2) for x in range(2,16)]}
+observed = {round(float(x), 8) for x in extended.threshold_percent.dropna().unique()}
 if observed != expected:
-    raise SystemExit(f'Unexpected final raw sensitivity thresholds: {sorted(observed)}')
+    raise SystemExit(f'Unexpected final sensitivity thresholds: {sorted(observed)}')
+branch_counts = extended.groupby('branch').patient.nunique().to_dict()
+if branch_counts != {'pairwise_rarefied': 22, 'simpson_no_downsampling': 22}:
+    raise SystemExit(f'Extended threshold branches are incomplete: {branch_counts}')
 
 print('Pre-publication scientific contract passed')
 PY
 
 python scripts/analysis_15_tz_final_reporting.py
+python scripts/analysis_17_apply_extended_thresholds.py
 
 python - <<'PY'
 from pathlib import Path
@@ -153,6 +160,12 @@ for f in required_tables:
 master = pd.read_csv('results/final/01_clone_master.csv')
 if master.patient.nunique() != 22:
     raise SystemExit('Final clone master does not contain 22 patients')
+
+sens = pd.read_csv('results/final/04_threshold_sensitivity.csv')
+expected = {0.05,0.10,*[round(x/10,2) for x in range(2,16)]}
+observed = {round(float(x), 8) for x in sens.threshold_percent.dropna().unique()}
+if observed != expected:
+    raise SystemExit(f'Final threshold table has wrong grid: {sorted(observed)}')
 
 required_figs = [
     'figures/FIGURE_INDEX.txt',
