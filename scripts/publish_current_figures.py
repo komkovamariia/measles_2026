@@ -47,8 +47,13 @@ lines.extend([
     "Analysis logic",
     "Cross sectional figures use all accepted T1 observations, all accepted T2 observations and healthy controls",
     "Paired figures use only patients with both accepted T1 and T2 observations",
-    "Patient overlap is calculated only for expanded aaV clonotypes",
-    "Expanded means at least 0.10 percent of productive TRB reads",
+    "Established patient overlap is calculated for complete aaV and expanded aaV repertoires",
+    "Established expanded means at least 0.10 percent of productive TRB reads",
+    "Additive clone fate v2 tracks CDR3 nucleotide plus TRBV plus TRBJ across all 22 paired patients",
+    "Clone fate v2 sensitivity thresholds are 0.05 0.10 0.20 0.50 0.75 and 1.00 percent",
+    "Clone fate v2 uses analytical detection probabilities and repeated equal-depth sampling controls",
+    "Patient-aware lost versus retained enrichment adjusts for baseline T1 frequency and patient clustering",
+    "Sequence-neighbour clusters are edit-distance clusters and are not labelled TCRdist clusters",
     "БА1_071 T2 is one patient observation formed by averaging normalized frequencies from new_106 and new_111",
 ])
 index.write_text("\n".join(lines) + "\n", encoding="utf-8")
