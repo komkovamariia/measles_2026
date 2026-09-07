@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Exact read downsampling for the 22 paired T1-T2 patients.
+"""Pair-specific repeated rarefaction and internal sampling null for 22 T1-T2 pairs.
 
-This module is additive. It performs true without-replacement rarefaction of each
-sequencing library to a common productive-read depth. Biological replicate libraries
-are rarefied separately and only then averaged at the patient time-point level.
+For each patient, every accepted T1 and T2 sequencing library is downsampled
+without replacement to that patient's own common depth:
+    pair_depth = minimum productive-read depth among libraries contributing to T1 or T2.
 
-Outputs include Shannon diversity, the established entropy-based clonality, Simpson D,
-sqrt Simpson D, normalized richness, complete-repertoire Jaccard and expanded-repertoire
-Jaccard at 0.10 and 1.00 percent.
+The procedure is repeated at least 500 times. Biological replicate libraries are
+rarefied separately, converted to frequencies, then averaged at the clinical point.
+
+For every T1 clonotype the script also estimates an empirical internal null.
+After each T1 rarefaction, clone detection in a same-depth synthetic T2 is simulated
+as the exact Bernoulli detection event implied by the rarefied T1 frequency and the
+T2 sampling effort. This is equivalent for the detection event to generating full
+multinomial pseudo-libraries, but avoids creating huge unnecessary count matrices.
 
 Read downsampling controls sequencing depth only. It cannot remove PCR amplification
 bias because these bulk genomic DNA libraries do not contain UMI information.
@@ -22,195 +27,314 @@ import sys
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 ROOT = Path(os.environ.get("MEASLES_REPO", Path.cwd())).resolve()
 RESULTS = ROOT / "results"
 CURRENT = RESULTS / "current"
-FIG = ROOT / "figures" / "current"
 CURRENT.mkdir(parents=True, exist_ok=True)
-FIG.mkdir(parents=True, exist_ok=True)
 
-REQUESTED_DEPTH = int(os.environ.get("MEASLES_RAREFACTION_DEPTH", "50000"))
 N_ITER = int(os.environ.get("MEASLES_RAREFACTION_ITERATIONS", "500"))
 SEED = int(os.environ.get("MEASLES_RAREFACTION_SEED", "1031"))
-THRESHOLDS = [0.001, 0.01]
+if N_ITER < 500:
+    raise RuntimeError("Pair-specific rarefaction requires at least 500 iterations")
+THRESHOLDS = [0.0005, 0.001, 0.002, 0.005, 0.0075, 0.01]
+PRIMARY = 0.001
+ROBUST_P = 0.99
 KEY = ["cdr3nt", "cdr3aa", "v_gene", "j_gene"]
 
 nt_path = RESULTS / "library_trb_clonotypes_nt.csv"
 meta_path = CURRENT / "sample_metadata_current.csv"
-if not nt_path.exists():
+master_path = CURRENT / "paired_T1_clone_master_nt.csv"
+if not nt_path.exists() or not master_path.exists():
     subprocess.run([sys.executable, str(ROOT / "scripts" / "analysis_10_clone_fate_v2.py")], check=True)
+
 lib = pd.read_csv(nt_path)
 meta = pd.read_csv(meta_path)
-meta["analysis_include_final"] = meta.analysis_include_final.astype(str).str.lower().isin(["true","1","yes"])
+master = pd.read_csv(master_path)
+meta["analysis_include_final"] = meta["analysis_include_final"].astype(str).str.lower().isin(["true", "1", "yes"])
 lib["count"] = pd.to_numeric(lib["count"], errors="coerce").fillna(0).round().astype(np.int64)
 
 case = meta[meta.analysis_include_final & meta.disease_status.eq("measles")].copy()
 paired = []
 for patient, z in case.groupby("patient_id"):
-    if {"T1","T2"}.issubset(set(z.clinical_timepoint.astype(str))):
+    if {"T1", "T2"}.issubset(set(z.clinical_timepoint.astype(str))):
         paired.append(str(patient))
 paired = sorted(paired)
 if len(paired) != 22:
     raise RuntimeError(f"Expected 22 T1-T2 patients, found {len(paired)}")
 
-paired_libs = case[case.patient_id.astype(str).isin(paired) & case.clinical_timepoint.isin(["T1","T2"])].library_id.astype(str)
-lib_totals = lib.groupby("library_id")["count"].sum()
-minimum_observed_depth = int(lib_totals.reindex(paired_libs).min())
-depth = min(REQUESTED_DEPTH, minimum_observed_depth)
-if depth <= 0:
-    raise RuntimeError("Common rarefaction depth is not positive")
-
-# Precompute integer count vectors once. A global key space is used only inside each
-# patient, so the sampling work remains compact.
-patient_data = {}
-for patient in paired:
-    pmeta = case[case.patient_id.astype(str).eq(patient) & case.clinical_timepoint.isin(["T1","T2"])]
-    library_ids = pmeta.library_id.astype(str).tolist()
-    z = lib[lib.library_id.astype(str).isin(library_ids)].copy()
-    keys = sorted(set(map(tuple, z[KEY].astype(str).to_numpy())))
-    key_to_i = {k:i for i,k in enumerate(keys)}
-    library_vectors = {}
-    for library_id, zz in z.groupby("library_id"):
-        vec = np.zeros(len(keys), dtype=np.int64)
-        for r in zz.itertuples(index=False):
-            k = (str(r.cdr3nt),str(r.cdr3aa),str(r.v_gene),str(r.j_gene))
-            vec[key_to_i[k]] += int(r.count)
-        library_vectors[str(library_id)] = vec
-    point_libraries = {
-        point: pmeta.loc[pmeta.clinical_timepoint.eq(point),"library_id"].astype(str).tolist()
-        for point in ["T1","T2"]
-    }
-    age_group = str(pmeta.age_group.iloc[0])
-    patient_data[patient] = (keys, library_vectors, point_libraries, age_group)
-
 rng = np.random.default_rng(SEED)
 
 
-def rarefy(vec):
-    total = int(vec.sum())
-    if total < depth:
-        raise RuntimeError(f"Library depth {total} is below common rarefaction depth {depth}")
-    if total == depth:
-        return vec.copy()
-    # NumPy's multivariate hypergeometric samples observed reads without replacement.
-    return rng.multivariate_hypergeometric(vec, depth).astype(np.int64)
+def summarize(values):
+    a = np.asarray(values, dtype=float)
+    a = a[np.isfinite(a)]
+    if len(a) == 0:
+        return np.nan, np.nan, np.nan
+    return float(np.median(a)), float(np.quantile(a, 0.025)), float(np.quantile(a, 0.975))
 
 
-def point_frequency(libraries, vectors):
-    fractions = []
-    for lib_id in libraries:
-        sampled = rarefy(vectors[lib_id])
-        fractions.append(sampled / float(depth))
-    if not fractions:
-        raise RuntimeError("A paired patient time point has no library")
-    f = np.mean(np.stack(fractions, axis=0), axis=0)
-    s = float(f.sum())
-    return f/s if s > 0 else f
+def repertoire_metrics(f):
+    p = f[f > 0]
+    richness = len(p)
+    shannon = float(-(p * np.log(p)).sum()) if richness else np.nan
+    clonality = float(1 - shannon / np.log(richness)) if richness > 1 else np.nan
+    simpson_d = float(np.sum(p * p)) if richness else np.nan
+    return richness, shannon, clonality, simpson_d
 
 
-def metrics(f1, f2):
-    out = {}
-    for name, f in [("T1",f1),("T2",f2)]:
-        p = f[f>0]
-        richness = int(len(p))
-        shannon = float(-(p*np.log(p)).sum()) if richness else np.nan
-        out[f"{name}_richness"] = richness
-        out[f"{name}_normalized_richness"] = richness / float(depth)
-        out[f"{name}_shannon"] = shannon
-        out[f"{name}_clonality"] = float(1-shannon/np.log(richness)) if richness>1 else np.nan
-        simpson_d = float(np.sum(p*p)) if richness else np.nan
-        out[f"{name}_simpson_D"] = simpson_d
-        out[f"{name}_sqrt_simpson_D"] = float(np.sqrt(simpson_d)) if np.isfinite(simpson_d) else np.nan
-    s1=set(np.flatnonzero(f1>0)); s2=set(np.flatnonzero(f2>0)); u=s1|s2
-    out["complete_jaccard"] = len(s1&s2)/len(u) if u else np.nan
-    for th in THRESHOLDS:
-        e1=set(np.flatnonzero(f1>=th)); e2=set(np.flatnonzero(f2>=th)); eu=e1|e2
-        label=str(100*th).rstrip("0").rstrip(".").replace(".","_")
-        out[f"expanded_jaccard_{label}_percent"] = len(e1&e2)/len(eu) if eu else np.nan
-        out[f"T1_expanded_count_{label}_percent"] = len(e1)
-        out[f"T2_expanded_count_{label}_percent"] = len(e2)
-    return out
+if "P_detection_if_unchanged_analytic_raw_depth" not in master.columns:
+    master["P_detection_if_unchanged_analytic_raw_depth"] = pd.to_numeric(
+        master.get("P_detection_if_unchanged", np.nan), errors="coerce"
+    )
 
-raw_rows=[]
-summary_rows=[]
+pair_summaries = []
+threshold_rows = []
+clone_null_rows = []
+
 for patient in paired:
-    keys, vectors, point_libraries, age_group = patient_data[patient]
-    store=defaultdict(list)
+    pmeta = case[
+        case.patient_id.astype(str).eq(patient)
+        & case.clinical_timepoint.isin(["T1", "T2"])
+    ].copy()
+    point_libraries = {
+        point: pmeta.loc[pmeta.clinical_timepoint.eq(point), "library_id"].astype(str).tolist()
+        for point in ["T1", "T2"]
+    }
+    all_libraries = point_libraries["T1"] + point_libraries["T2"]
+    z = lib[lib.library_id.astype(str).isin(all_libraries)].copy()
+
+    keys = sorted(set(map(tuple, z[KEY].astype(str).to_numpy())))
+    key_to_i = {k: i for i, k in enumerate(keys)}
+    vectors = {}
+    depths = {}
+    for library_id, zz in z.groupby("library_id"):
+        vec = np.zeros(len(keys), dtype=np.int64)
+        for r in zz.itertuples(index=False):
+            key = (str(r.cdr3nt), str(r.cdr3aa), str(r.v_gene), str(r.j_gene))
+            vec[key_to_i[key]] += int(r.count)
+        vectors[str(library_id)] = vec
+        depths[str(library_id)] = int(vec.sum())
+
+    missing = [x for x in all_libraries if x not in vectors]
+    if missing:
+        raise RuntimeError(f"{patient}: missing nucleotide count vectors for {missing}")
+    pair_depth = min(depths[x] for x in all_libraries)
+    if pair_depth <= 0:
+        raise RuntimeError(f"{patient}: non-positive pair rarefaction depth")
+
+    def rarefy_library(library_id):
+        vec = vectors[library_id]
+        total = int(vec.sum())
+        if total == pair_depth:
+            return vec.copy()
+        return rng.multivariate_hypergeometric(vec, pair_depth).astype(np.int64)
+
+    def point_frequency(point):
+        fractions = []
+        for library_id in point_libraries[point]:
+            sampled = rarefy_library(library_id)
+            fractions.append(sampled / float(pair_depth))
+        f = np.mean(np.stack(fractions, axis=0), axis=0)
+        total = float(f.sum())
+        return f / total if total > 0 else f
+
+    pmaster = master[master.patient.astype(str).eq(patient)].copy()
+    master_indices = []
+    key_indices = []
+    for idx, r in pmaster.iterrows():
+        key = (str(r.cdr3nt), str(r.cdr3aa), str(r.TRBV), str(r.TRBJ))
+        if key not in key_to_i:
+            raise RuntimeError(f"{patient}: master clonotype not found in pair key space: {r.clone_id_nt}")
+        master_indices.append(idx)
+        key_indices.append(key_to_i[key])
+    key_indices = np.asarray(key_indices, dtype=int)
+
+    null_detect_hits = np.zeros(len(master_indices), dtype=np.int64)
+    observed_t2_detect_hits = np.zeros(len(master_indices), dtype=np.int64)
+    rare_t1_store = np.zeros((N_ITER, len(master_indices)), dtype=np.float32)
+    rare_t2_store = np.zeros((N_ITER, len(master_indices)), dtype=np.float32)
+    metric_store = defaultdict(list)
+    threshold_store = {th: defaultdict(list) for th in THRESHOLDS}
+
+    n_t2_libraries = len(point_libraries["T2"])
+    null_total_reads = pair_depth * n_t2_libraries
+
     for iteration in range(N_ITER):
-        f1=point_frequency(point_libraries["T1"],vectors)
-        f2=point_frequency(point_libraries["T2"],vectors)
-        rec=metrics(f1,f2)
-        for k,v in rec.items(): store[k].append(v)
-        if iteration < 5:
-            # Small audit sample only. The full iteration matrix would be unnecessarily large.
-            raw_rows.append({"patient":patient,"age_group":age_group,"iteration":iteration+1,"depth":depth,**rec})
-    row={"patient":patient,"age_group":age_group,"rarefaction_depth":depth,"iterations":N_ITER,"n_T1_libraries":len(point_libraries["T1"]),"n_T2_libraries":len(point_libraries["T2"])}
-    for name,values in store.items():
-        a=np.asarray(values,float); a=a[np.isfinite(a)]
-        row[name+"_median"]=float(np.median(a)) if len(a) else np.nan
-        row[name+"_q025"]=float(np.quantile(a,.025)) if len(a) else np.nan
-        row[name+"_q975"]=float(np.quantile(a,.975)) if len(a) else np.nan
-    summary_rows.append(row)
+        f1 = point_frequency("T1")
+        f2 = point_frequency("T2")
+        rare_t1_store[iteration, :] = f1[key_indices]
+        rare_t2_store[iteration, :] = f2[key_indices]
+        observed_t2_detect_hits += (f2[key_indices] > 0).astype(np.int64)
 
-summary=pd.DataFrame(summary_rows)
-summary.to_csv(CURRENT/"exact_rarefaction_summary.csv",index=False)
-pd.DataFrame(raw_rows).to_csv(CURRENT/"exact_rarefaction_audit_first5.csv",index=False)
+        p_null = 1.0 - np.power(1.0 - np.clip(f1[key_indices], 0.0, 1.0), null_total_reads)
+        null_detect_hits += (rng.random(len(p_null)) < p_null).astype(np.int64)
 
-# Compact figure: each patient remains one biological replicate. Lines connect paired T1/T2.
-fig,axs=plt.subplots(2,2,figsize=(13,10),constrained_layout=True)
-metric_specs=[
-    ("clonality","Entropy based clonality"),
-    ("shannon","Shannon diversity"),
-    ("simpson_D","Simpson D"),
-    ("normalized_richness","Normalized richness")
-]
-for ax,(metric,title) in zip(axs.flat,metric_specs):
-    for age,x0 in [("child",0),("adult",3)]:
-        z=summary[summary.age_group.eq(age)].copy()
-        t1=z[f"T1_{metric}_median"].to_numpy(float); t2=z[f"T2_{metric}_median"].to_numpy(float)
-        for i in range(len(z)):
-            ax.plot([x0,x0+1],[t1[i],t2[i]],alpha=.35,lw=1)
-            ax.scatter([x0,x0+1],[t1[i],t2[i]],s=22)
-    ax.set_xticks([0,1,3,4],["Child T1","Child T2","Adult T1","Adult T2"],rotation=15)
-    ax.set_title(title)
-    ax.grid(axis="y",alpha=.2)
-fig.suptitle(f"Paired repertoire metrics after exact rarefaction to {depth:,} productive reads\nEach library sampled without replacement, {N_ITER} iterations",fontweight="bold",fontsize=14)
-fig.savefig(FIG/"19_exact_rarefaction_repertoire_metrics.png",dpi=220,bbox_inches="tight")
-fig.savefig(FIG/"19_exact_rarefaction_repertoire_metrics.pdf",bbox_inches="tight")
-plt.close(fig)
+        r1, h1, c1, s1 = repertoire_metrics(f1)
+        r2, h2, c2, s2 = repertoire_metrics(f2)
+        for name, value in [
+            ("T1_richness", r1), ("T2_richness", r2),
+            ("T1_shannon", h1), ("T2_shannon", h2),
+            ("T1_clonality", c1), ("T2_clonality", c2),
+            ("T1_simpson_D", s1), ("T2_simpson_D", s2),
+        ]:
+            metric_store[name].append(value)
 
-# Expanded overlap at 0.10 and 1.00 percent after exact depth control.
-fig,axs=plt.subplots(1,2,figsize=(12,5.5),constrained_layout=True)
-for ax,(col,title) in zip(axs,[
-    ("expanded_jaccard_0_1_percent_median","Expanded Jaccard at 0.10 percent"),
-    ("expanded_jaccard_1_percent_median","Expanded Jaccard at 1.00 percent"),
-]):
-    for x,age in enumerate(["child","adult"]):
-        vals=summary.loc[summary.age_group.eq(age),col].dropna().to_numpy(float)
-        jitter=np.linspace(-.07,.07,len(vals)) if len(vals)>1 else np.array([0.0])
-        ax.scatter(np.full(len(vals),x)+jitter,vals,alpha=.75)
-        if len(vals): ax.hlines(np.median(vals),x-.18,x+.18,lw=2)
-    ax.set_xticks([0,1],["Children","Adults"]); ax.set_ylim(0,1); ax.set_ylabel("Jaccard similarity"); ax.set_title(title); ax.grid(axis="y",alpha=.2)
-fig.suptitle("Expanded repertoire similarity after exact read-depth control",fontweight="bold",fontsize=14)
-fig.savefig(FIG/"20_exact_rarefaction_expanded_overlap.png",dpi=220,bbox_inches="tight")
-fig.savefig(FIG/"20_exact_rarefaction_expanded_overlap.pdf",bbox_inches="tight")
-plt.close(fig)
+        all1 = set(np.flatnonzero(f1 > 0))
+        all2 = set(np.flatnonzero(f2 > 0))
+        union = all1 | all2
+        metric_store["complete_jaccard"].append(len(all1 & all2) / len(union) if union else np.nan)
 
-(CURRENT/"exact_rarefaction_README.txt").write_text("\n".join([
-    f"Common productive-read depth: {depth}",
-    f"Requested depth: {REQUESTED_DEPTH}",
-    f"Iterations: {N_ITER}",
-    f"Seed: {SEED}",
-    "Sampling method: NumPy multivariate hypergeometric without replacement",
-    "Each sequencing library is rarefied separately",
-    "Biological repeat libraries are converted to frequencies and averaged only after rarefaction",
-    "Metrics: Shannon diversity, entropy-based clonality, Simpson D, sqrt Simpson D, normalized richness, complete Jaccard, expanded Jaccard at 0.10 and 1.00 percent",
-    "This controls sequencing depth but not PCR amplification bias because UMI are absent",
-])+"\n",encoding="utf-8")
+        for th in THRESHOLDS:
+            e1 = np.flatnonzero(f1 >= th)
+            e2 = set(np.flatnonzero(f2 >= th))
+            eu = set(e1) | e2
+            threshold_store[th]["expanded_jaccard"].append(len(set(e1) & e2) / len(eu) if eu else np.nan)
+            if len(e1) == 0:
+                for name in [
+                    "retained_count_percent", "below_count_percent", "not_detected_count_percent",
+                    "retained_mass_percent", "below_mass_percent", "not_detected_mass_percent",
+                ]:
+                    threshold_store[th][name].append(np.nan)
+                continue
 
-print("Exact rarefaction completed")
-print("Paired patients",len(summary))
-print("Common depth",depth)
-print("Iterations",N_ITER)
+            retained_mask = np.array([i in e2 for i in e1], dtype=bool)
+            detected_mask = f2[e1] > 0
+            below_mask = detected_mask & ~retained_mask
+            lost_mask = ~detected_mask
+            threshold_store[th]["retained_count_percent"].append(100 * retained_mask.mean())
+            threshold_store[th]["below_count_percent"].append(100 * below_mask.mean())
+            threshold_store[th]["not_detected_count_percent"].append(100 * lost_mask.mean())
+
+            mass = f1[e1]
+            mass_total = float(mass.sum())
+            if mass_total > 0:
+                threshold_store[th]["retained_mass_percent"].append(100 * float(mass[retained_mask].sum()) / mass_total)
+                threshold_store[th]["below_mass_percent"].append(100 * float(mass[below_mask].sum()) / mass_total)
+                threshold_store[th]["not_detected_mass_percent"].append(100 * float(mass[lost_mask].sum()) / mass_total)
+            else:
+                for name in ["retained_mass_percent", "below_mass_percent", "not_detected_mass_percent"]:
+                    threshold_store[th][name].append(np.nan)
+
+    summary = {
+        "patient": patient,
+        "age_group": str(pmeta.age_group.iloc[0]),
+        "pair_rarefaction_depth": pair_depth,
+        "iterations": N_ITER,
+        "n_T1_libraries": len(point_libraries["T1"]),
+        "n_T2_libraries": len(point_libraries["T2"]),
+        "T1_libraries": ";".join(point_libraries["T1"]),
+        "T2_libraries": ";".join(point_libraries["T2"]),
+    }
+    for name, values in metric_store.items():
+        med, lo, hi = summarize(values)
+        summary[f"{name}_median"] = med
+        summary[f"{name}_q025"] = lo
+        summary[f"{name}_q975"] = hi
+    pair_summaries.append(summary)
+
+    for th in THRESHOLDS:
+        row = {
+            "patient": patient,
+            "age_group": str(pmeta.age_group.iloc[0]),
+            "threshold_fraction": th,
+            "threshold_percent": 100 * th,
+            "pair_rarefaction_depth": pair_depth,
+            "iterations": N_ITER,
+        }
+        for name, values in threshold_store[th].items():
+            med, lo, hi = summarize(values)
+            row[f"{name}_median"] = med
+            row[f"{name}_q025"] = lo
+            row[f"{name}_q975"] = hi
+        threshold_rows.append(row)
+
+    empirical_p = null_detect_hits / float(N_ITER)
+    observed_detect_p = observed_t2_detect_hits / float(N_ITER)
+    t1_median = np.median(rare_t1_store, axis=0)
+    t2_median = np.median(rare_t2_store, axis=0)
+    zero_upper_pair = 1.0 - 0.05 ** (1.0 / max(null_total_reads, 1))
+
+    for pos, master_idx in enumerate(master_indices):
+        clone_null_rows.append({
+            "patient": patient,
+            "clone_id_nt": str(master.at[master_idx, "clone_id_nt"]),
+            "pair_rarefaction_depth": pair_depth,
+            "iterations": N_ITER,
+            "n_T2_libraries": n_t2_libraries,
+            "null_total_reads": null_total_reads,
+            "P_detection_if_unchanged_empirical": empirical_p[pos],
+            "P_detection_in_observed_T2_rarefactions": observed_detect_p[pos],
+            "T1_fraction_rarefied_median": float(t1_median[pos]),
+            "T2_fraction_rarefied_median": float(t2_median[pos]),
+            "T2_zero_upper_95_pair_depth": zero_upper_pair,
+        })
+        master.at[master_idx, "pair_rarefaction_depth"] = pair_depth
+        master.at[master_idx, "rarefaction_iterations"] = N_ITER
+        master.at[master_idx, "P_detection_if_unchanged_empirical"] = empirical_p[pos]
+        master.at[master_idx, "P_detection_if_unchanged"] = empirical_p[pos]
+        master.at[master_idx, "P_detection_in_observed_T2_rarefactions"] = observed_detect_p[pos]
+        master.at[master_idx, "T1_fraction_rarefied_median"] = float(t1_median[pos])
+        master.at[master_idx, "T2_fraction_rarefied_median"] = float(t2_median[pos])
+        master.at[master_idx, "T2_zero_upper_95_pair_depth"] = zero_upper_pair
+
+pair_summary = pd.DataFrame(pair_summaries)
+threshold_summary = pd.DataFrame(threshold_rows)
+clone_null = pd.DataFrame(clone_null_rows)
+pair_summary.to_csv(CURRENT / "pairwise_rarefaction_summary.csv", index=False)
+threshold_summary.to_csv(CURRENT / "pairwise_threshold_sensitivity.csv", index=False)
+clone_null.to_csv(CURRENT / "clone_sampling_null.csv", index=False)
+
+expanded_primary = master["expanded_T1_0_10_percent"].astype(str).str.lower().isin(["true", "1", "yes"])
+t2_zero = pd.to_numeric(master["T2_fraction"], errors="coerce").fillna(0).eq(0)
+master["sampling_robust_not_detected"] = (
+    expanded_primary
+    & t2_zero
+    & pd.to_numeric(master["P_detection_if_unchanged_empirical"], errors="coerce").ge(ROBUST_P)
+)
+strong_contraction = (
+    expanded_primary
+    & pd.to_numeric(master["T2_fraction"], errors="coerce").gt(0)
+    & (
+        pd.to_numeric(master["T2_fraction"], errors="coerce")
+        <= 0.2 * pd.to_numeric(master["T1_fraction"], errors="coerce")
+    )
+)
+master["sampling_candidate_class"] = np.select(
+    [
+        master["sampling_robust_not_detected"],
+        strong_contraction,
+        master["fate_0_10_percent"].eq("detected below 0.10 percent"),
+        master["fate_0_10_percent"].eq("retained expanded"),
+    ],
+    [
+        "sampling-robust not detected",
+        "strong contraction",
+        "detected below primary threshold",
+        "retained expanded",
+    ],
+    default="other",
+)
+master.to_csv(master_path, index=False)
+
+(CURRENT / "pairwise_rarefaction_README.txt").write_text(
+    "\n".join([
+        "Pair-specific repeated rarefaction for the 22 accepted T1-T2 patient pairs",
+        "Depth rule: each patient has its own pair depth equal to the minimum productive-read depth among all accepted T1 and T2 libraries for that patient",
+        f"Iterations: {N_ITER}",
+        f"Seed: {SEED}",
+        "Observed libraries: NumPy multivariate hypergeometric sampling without replacement",
+        "Biological replicate libraries: rarefied separately, converted to frequencies, then averaged within a time point",
+        "Internal null: after each T1 rarefaction, clone detection in a same-depth pseudo-T2 is simulated as the exact Bernoulli detection event implied by the T1 frequency and T2 sampling effort",
+        "P_detection_if_unchanged is the empirical null detection fraction across iterations",
+        "Analytical raw-depth probability is retained separately in P_detection_if_unchanged_analytic_raw_depth",
+        "Threshold sensitivity: 0.05, 0.10, 0.20, 0.50, 0.75 and 1.00 percent",
+        "This controls sequencing read depth only and cannot remove PCR amplification bias because UMI are absent",
+    ]) + "\n",
+    encoding="utf-8",
+)
+
+print("Pair-specific rarefaction completed")
+print("Paired patients", len(pair_summary))
+print("Iterations", N_ITER)
+print("Pair depths", int(pair_summary.pair_rarefaction_depth.min()), "to", int(pair_summary.pair_rarefaction_depth.max()))
