@@ -2,7 +2,7 @@
 
 ## Current analysis contract
 
-The authoritative repository metadata is `config/analysis_metadata.csv`
+The authoritative metadata is `config/analysis_metadata.csv`
 
 Quality threshold is 4400 productive TRB clonotypes per sequencing library
 
@@ -10,11 +10,11 @@ Children are younger than 18 years. Adults are 18 years and older
 
 Controls use `CONTROL` only
 
-The main case time points are T1, T2 and T3
+Measles time points are T1, T2 and T3. T0 does not exist in this study
 
-`new_106` and `new_111` are accepted T2 biological repeats for БА1_071. They are averaged after within library frequency normalization and count as one patient observation
+`new_106` and `new_111` are accepted T2 biological repeats for БА1_071. Each library is handled separately through depth control and normalization, then the normalized frequencies are averaged into one biological T2 observation
 
-The established aaV analyses remain in place. The additive clone fate analysis tracks nucleotide clonotypes across the 22 accepted T1-T2 pairs
+The established aaV analyses remain reproducible. The primary clone-fate analysis uses all 22 accepted T1-T2 pairs and tracks nucleotide clonotypes
 
 ## Recommended refresh on the cluster
 
@@ -39,8 +39,6 @@ Expected state is `COMPLETED` with exit code `0:0`
 
 ## Analysis order
 
-The refresh job runs
-
 ```text
 analysis_01_prepare.py
 analysis_02_antigens.py
@@ -49,27 +47,23 @@ analysis_07_longitudinal_expanded.py
 analysis_08_final_reporting.py
 analysis_09_patient_panels.py
 analysis_10_clone_fate_v2.py
+analysis_12_exact_rarefaction.py
 analysis_11_clone_enrichment.py
+analysis_13_compact_reporting.py
 publish_current_figures.py
 ```
 
-`analysis_01_prepare.py` applies the final metadata, library QC and replicate aggregation
+`analysis_10_clone_fate_v2.py` builds the nucleotide master table, public/private annotation, sequence-neighbour scaffolding, T3 scaffolding and repertoire identity fingerprint. Its older global resampling block is retained only for backward reproducibility and is reduced to one iteration by the refresh launcher
 
-`analysis_06_clinical_summary.py` implements the cross sectional design using all accepted T1 observations
+`analysis_12_exact_rarefaction.py` is the authoritative sampling analysis
 
-`analysis_07_longitudinal_expanded.py` implements the established paired T1 and T2 aaV analysis and expanded clone fate
+`analysis_11_clone_enrichment.py` is run after sampling correction, so TRBV, TRBJ and CDR3 motif enrichment compares sampling-robust loss or strong contraction against retained expanded clones, using patient-aware GEE adjusted for baseline T1 clone frequency
 
-`analysis_08_final_reporting.py` reports expanded TRBV patterns, patient averaged overlap and specificity reference coverage
+`analysis_13_compact_reporting.py` produces the compact final candidate table, extended T3 validation, current GA1_003 sensitivity and only figures that answer a distinct question
 
-`analysis_09_patient_panels.py` creates the established patient level panels
+## Clone definitions
 
-`analysis_10_clone_fate_v2.py` adds nucleotide CDR3 tracking, complete T1 clone fate, threshold sensitivity, analytical sampling detection probabilities, repeated equal-depth resampling, public/private annotation, T3 checks and the repertoire identity fingerprint
-
-`analysis_11_clone_enrichment.py` tests TRBV, TRBJ and CDR3 amino-acid motif enrichment among lost versus retained T1-expanded clones using patient-aware GEE adjusted for baseline T1 clone frequency
-
-## Nucleotide clone fate definitions
-
-Primary physical tracking unit
+Physical tracking unit
 
 ```text
 CDR3 nucleotide + TRBV + TRBJ
@@ -93,45 +87,79 @@ Sensitivity thresholds
 0.05 0.10 0.20 0.50 0.75 1.00 percent
 ```
 
-For a primary T1-expanded clone the T2 fate is one of
+For every T1-expanded clone the T2 fate is
 
 ```text
 retained expanded
-detected below 0.10 percent
+detected below threshold
 not detected
 ```
 
-A zero T2 value is not assigned a pseudocount. The master table contains the 95 percent upper detection bound and `P_detection_if_unchanged`
+The master table contains T1 and T2 counts, fractions, absolute change, log2 T2 over T1 when T2 is nonzero, contraction, share of the original T1 expanded mass, public/private status, healthy-control prevalence, available exact antigen annotation, sequence-neighbour information, T3 fate, batch information and final candidate class
 
-## Depth-control settings
+A zero T2 value never receives an arbitrary pseudocount. The table contains a 95 percent upper detection bound instead
 
-Defaults
+## Pair-specific repeated rarefaction
+
+This follows the specification literally
+
+For patient `i`
 
 ```text
-requested depth: 50000 productive reads
+pair_depth_i = minimum productive-read depth among every accepted T1 and T2 library contributing to that patient
+```
+
+Each accepted T1 and T2 sequencing library is sampled without replacement to `pair_depth_i`
+
+For БА1_071 the two T2 libraries are rarefied separately. Their frequencies are averaged only after rarefaction and within-library normalization
+
+The procedure is repeated at least 500 times. Default
+
+```text
 iterations: 500
 seed: 1031
 ```
 
-They can be changed before submitting the job
+Optional
 
 ```bash
-export MEASLES_RAREFACTION_DEPTH=50000
-export MEASLES_RAREFACTION_ITERATIONS=500
+export MEASLES_RAREFACTION_ITERATIONS=1000
 export MEASLES_RAREFACTION_SEED=1031
 ```
 
-The workflow never upsamples. If the shallowest accepted paired library is below the requested depth, that lower observed depth becomes the common depth
+There is no global 50000-read target in the authoritative analysis. Different patients may therefore have different pair depths. This is intentional because the central question is within-patient T1 to T2 clone fate
 
-Clone-level detection probability is calculated analytically. Iterations are used only for repertoire-level depth-control sensitivity, not to estimate a probability that has a direct model solution
+Observed libraries are rarefied with multivariate hypergeometric sampling without replacement
 
-The sampling model does not correct PCR amplification bias because the libraries have no UMI
+The internal null starts from repeatedly rarefied T1. For every clone, the workflow records how often that clone would be detected in an unchanged pseudo-T2 with the same sampling effort. The resulting empirical column is
+
+```text
+P_detection_if_unchanged
+```
+
+The old analytical raw-depth probability is retained separately as a check
+
+A T1-expanded clone that is absent in real T2 and has empirical `P_detection_if_unchanged >= 0.99` is flagged as sampling-robust not detected
+
+The sampling model controls finite sequencing depth. It does not remove PCR amplification bias because these libraries have no UMI
+
+## T3 and identity validation
+
+Available follow-up relations are used without inventing missing points
+
+```text
+ЭГ1_042: T1 T2 T3
+СА1_013: valid T2 T3 because T1 failed QC
+ММ1_033: valid T1 T3 because T2 failed identity QC
+```
+
+For ЭГ1_042 the workflow can explicitly identify a T1 clone absent at T2 that reappears at T3
+
+Repertoire identity QC uses all-vs-all Morisita-Horn similarity. GA1_003 is additionally summarized with and without the cross-batch pair
 
 ## Nucleotide export requirement
 
-The existing MiXCR TSV files are expected to contain `nSeqCDR3`
-
-Check one export with
+Existing MiXCR TSV files must contain `nSeqCDR3`
 
 ```bash
 python - <<'PY'
@@ -141,82 +169,72 @@ print([c for c in x.columns if 'CDR3' in c])
 PY
 ```
 
-If `nSeqCDR3` is absent in an old export, re-export the existing `.clns` file with MiXCR. It is not necessary to repeat FASTQ alignment or assembly
+If `nSeqCDR3` is absent, re-export the existing `.clns` file. FASTQ alignment and assembly do not need to be repeated
 
 ## Expected cohort counts
 
-Cross sectional observations
-
 ```text
-Children: CONTROL 4, T1 27, T2 8
-Adults: CONTROL 13, T1 29, T2 19
+Cross sectional children: CONTROL 4, T1 27, T2 8
+Cross sectional adults: CONTROL 13, T1 29, T2 19
+Paired T1-T2: 6 children and 16 adults, total 22
+Final unique patients: 33 children and 45 adults, total 78
 ```
 
-Paired T1 and T2 patients
+## Final figure folders
+
+The publisher intentionally keeps the tree shallow
 
 ```text
-Children: 6
-Adults: 16
-Total: 22
-```
-
-Final unique patients after QC
-
-```text
-Children: 33
-Adults: 45
-Total: 78
-```
-
-## Main output folders
-
-```text
-figures/group
+figures/main
 figures/patients
-results/current
+figures/downsampling_pairwise
+figures/sensitivity_thresholds
+figures/validation
+figures/supplementary
+figures/FIGURE_INDEX.txt
 ```
 
-Important new tables
+`figures/main` contains the primary fate figure and only data-supported enrichment or sequence-neighbour figures
+
+`figures/downsampling_pairwise` contains the empirical sampling-null conclusion figure
+
+`figures/sensitivity_thresholds` contains one combined plot for all six expansion thresholds
+
+`figures/validation` contains one combined identity, T3 and GA1_003 sensitivity figure
+
+`figures/supplementary` contains only selected established context. Old TRBV heatmaps and duplicate exploratory plots are not republished
+
+## Main tables
 
 ```text
 paired_T1_clone_master_nt.csv
-clone_fate_threshold_sensitivity.csv
-rarefaction_summary.csv
-sequence_neighbour_cluster_summary.csv
+candidate_clones_compact.csv
+pairwise_rarefaction_summary.csv
+pairwise_threshold_sensitivity.csv
+clone_sampling_null.csv
 lost_vs_retained_feature_enrichment.csv
-T3_clone_fate_validation.csv
+sequence_neighbour_cluster_summary.csv
+extended_T3_clone_validation.csv
+extended_T3_validation_summary.csv
 repertoire_identity_morisita_matrix.csv
 repertoire_identity_qc.csv
 GA1_003_cross_batch_sensitivity.csv
 ```
 
-Important new figures
-
-```text
-14_clone_fate_v2_overview.png
-15_lost_vs_retained_feature_enrichment.png
-16_sequence_neighbour_clusters.png
-17_repertoire_identity_fingerprint.png
-18_T3_clone_fate_validation.png
-```
-
-Figures 15, 16 and 18 are generated only when the relevant data support a non-empty plot. Existing figures 01 through 13 and all patient panels are retained
-
-## Important verification
+## Quick verification after a completed job
 
 ```bash
 python - <<'PY'
 import pandas as pd
-m = pd.read_csv('results/current/sample_metadata_current.csv')
-m['analysis_include_final'] = m['analysis_include_final'].astype(str).str.lower().isin(['true','1','yes'])
-print(m[m['library_id'].isin(['new_106','new_111'])][['library_id','patient_id','clinical_timepoint','productive_trb_clonotypes','analysis_include_final']])
-print('\nControls with wrong time point:', len(m[m['is_control'].astype(str).str.lower().isin(['true','1','yes']) & ~m['clinical_timepoint'].eq('CONTROL')]))
-
 x = pd.read_csv('results/current/paired_T1_clone_master_nt.csv')
-print('\nPaired patients in nucleotide master table:', x.patient.nunique())
-print('Primary T1 expanded candidates:', x.expanded_T1_0_10_percent.astype(str).str.lower().isin(['true','1','yes']).sum())
+r = pd.read_csv('results/current/pairwise_rarefaction_summary.csv')
+s = pd.read_csv('results/current/pairwise_threshold_sensitivity.csv')
+print('Paired patients:', x.patient.nunique())
+print('Rarefaction patients:', r.patient.nunique())
+print('Iterations:', sorted(r.iterations.unique()))
+print('Pair depth range:', int(r.pair_rarefaction_depth.min()), int(r.pair_rarefaction_depth.max()))
+print('Thresholds percent:', sorted(s.threshold_percent.unique()))
+print('Primary expanded candidates:', x.expanded_T1_0_10_percent.astype(str).str.lower().isin(['true','1','yes']).sum())
 print('Sampling robust losses:', x.sampling_robust_not_detected.astype(str).str.lower().isin(['true','1','yes']).sum())
 PY
 ```
-
-Both `new_106` and `new_111` must be included at T2 and the nucleotide master table must contain 22 paired patients
