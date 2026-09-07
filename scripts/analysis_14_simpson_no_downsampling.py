@@ -6,8 +6,9 @@ subsamples reads. Simpson's D is sum(p_i^2). Simpson clonality is sqrt(Simpson's
 matching the Methods definition in PMID 37051229. Normalized richness is the number
 of unique productive nucleotide clonotypes divided by total productive TRB reads.
 
-The same T1 clone-fate specification is then applied to observed normalized
-frequencies at 0.05, 0.10, 0.20 and 0.50 percent. The primary threshold is 0.10%.
+The same T1 clone-fate specification is applied to observed normalized frequencies
+at 0.05, 0.10, then 0.20 to 1.50 percent in 0.10 percentage-point steps.
+The primary threshold remains 0.10 percent.
 """
 from __future__ import annotations
 
@@ -22,7 +23,8 @@ CURRENT = RESULTS / "current"
 CURRENT.mkdir(parents=True, exist_ok=True)
 
 PRIMARY = 0.001
-THRESHOLDS = [0.0005, 0.001, 0.002, 0.005]
+THRESHOLD_PCT = [0.05, 0.10] + [round(x / 10, 2) for x in range(2, 16)]
+THRESHOLDS = [x / 100.0 for x in THRESHOLD_PCT]
 KEY = ["cdr3nt", "cdr3aa", "v_gene", "j_gene"]
 
 meta = pd.read_csv(CURRENT / "sample_metadata_current.csv")
@@ -163,6 +165,9 @@ for patient in paired:
         })
 
 threshold = pd.DataFrame(threshold_rows)
+observed = {round(float(x), 8) for x in threshold.threshold_percent.dropna().unique()}
+if observed != set(THRESHOLD_PCT):
+    raise RuntimeError(f"Unexpected Simpson threshold grid: {sorted(observed)}")
 threshold.to_csv(CURRENT / "simpson_raw_threshold_sensitivity.csv", index=False)
 
 keep = raw.T1_fraction.ge(PRIMARY)
@@ -171,3 +176,4 @@ raw.loc[keep].to_csv(CURRENT / "simpson_raw_primary_candidates.csv", index=False
 print("No-downsampling Simpson branch completed")
 print("Paired patients:", len(paired))
 print("Primary T1-expanded candidates:", int(keep.sum()))
+print("Thresholds percent:", THRESHOLD_PCT)
