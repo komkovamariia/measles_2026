@@ -26,7 +26,8 @@ required = [
     "scripts/analysis_10_clone_fate_v2.py", "scripts/analysis_11_clone_enrichment.py",
     "scripts/analysis_12_exact_rarefaction.py", "scripts/analysis_14_simpson_no_downsampling.py",
     "scripts/analysis_15_tz_final_reporting.py", "scripts/analysis_16_extended_thresholds.py",
-    "scripts/analysis_17_apply_extended_thresholds.py", "scripts/run_analysis_refresh_slurm.sh",
+    "scripts/analysis_17_apply_extended_thresholds.py", "scripts/plot_style.py",
+    "scripts/run_analysis_refresh_slurm.sh",
 ]
 missing = [p for p in required if not (ROOT / p).exists()]
 if missing:
@@ -192,6 +193,7 @@ contracts = {
     "scripts/analysis_12_exact_rarefaction.py": [
         "pair_depth = min", "multivariate_hypergeometric", "N_ITER < 500", "PRIMARY = 0.001",
         "P_detection_if_unchanged_empirical", "clone_sampling_null.csv", "pairwise_threshold_sensitivity.csv",
+        "downsampling_iteration_convergence.csv",
     ],
     "scripts/analysis_14_simpson_no_downsampling.py": [
         "PRIMARY = 0.001", "simpson_D", "simpson_clonality", "normalized_richness",
@@ -200,6 +202,7 @@ contracts = {
     "scripts/analysis_15_tz_final_reporting.py": [
         "FINAL = RESULTS / \"final\"", "candidate_class_rarefied", "candidate_class_simpson_raw",
         "01_shared_and_fate.png", "03_candidate_dumbbell_and_trbv.png",
+        "03_threshold_selection.png", "04_downsampling_iterations.png",
     ],
     "scripts/analysis_16_extended_thresholds.py": [
         "pairwise_threshold_sensitivity.csv", "simpson_raw_threshold_sensitivity.csv",
@@ -207,8 +210,8 @@ contracts = {
         "does not repeat rarefaction",
     ],
     "scripts/analysis_17_apply_extended_thresholds.py": [
-        "04_threshold_sensitivity.csv", "02_sampling_and_sensitivity.png",
-        "Threshold sensitivity from 0.05 to 1.50 percent",
+        "03_threshold_sensitivity.csv", "03_threshold_selection.png",
+        "Published threshold and iteration outputs validated",
     ],
     "scripts/run_analysis_refresh_slurm.sh": [
         "PAIR_ITERATIONS", "MEASLES_RAREFACTION_ITERATIONS=1", "analysis_12_exact_rarefaction.py",

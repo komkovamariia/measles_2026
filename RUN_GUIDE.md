@@ -41,7 +41,7 @@ The first established scripts are retained to build metadata, patient Venn panel
 
 `analysis_11_clone_enrichment.py` performs patient-aware TRBV, TRBJ and CDR3-motif enrichment after sampling correction.
 
-`analysis_14_simpson_no_downsampling.py` implements the complementary no-downsampling branch using the definitions from PMID 37051229 / PMCID PMC10084475:
+`analysis_14_simpson_no_downsampling.py` implements the complementary no-downsampling branch:
 
 ```text
 Simpson D = sum(p_i squared)
@@ -72,7 +72,7 @@ Both analytical branches use the same exact expansion grid:
 
 `analysis_16_extended_thresholds.py` is now only a lightweight validator and consolidator. It combines the already computed full-grid outputs from the rarefied and no-downsampling branches and does not run an additional rarefaction loop.
 
-`analysis_15_tz_final_reporting.py` curates the final tree. `analysis_17_apply_extended_thresholds.py` then ensures the final threshold table and the two sensitivity panels display the complete 0.05 to 1.50 percent grid without creating duplicate figures.
+`analysis_15_tz_final_reporting.py` curates the final tree, creates the complete threshold and iteration figures, and moves supporting tables out of the main result folder. `analysis_17_apply_extended_thresholds.py` validates the published grid and figures without redrawing them.
 
 ## Pair-specific rarefaction
 
@@ -110,11 +110,11 @@ The final rarefied branch then shows:
 1. changes in representation inside the shared T1-expanded segment and overall T1 clone fate
 2. sampling robustness and threshold sensitivity across 0.05 to 1.50 percent
 3. top increased, stable and decreased nonzero candidate clonotypes with TRBV labels
-4. TRBV/TRBJ/CDR3 enrichment and the measles-associated versus known non-measles versus unknown specificity fork
+4. patient-clustered TRBV/TRBJ/CDR3 enrichment with the method stated in the title
 
 The no-downsampling Simpson branch repeats the same biological logic while adding Simpson D, Simpson clonality and normalized richness.
 
-Validation keeps only identity QC, available T3 checks, GA1_003 cross-batch sensitivity and concordance between the two analytical branches.
+Validation keeps identity QC, available T3 checks, GA1_003 cross-batch sensitivity, explicit branch concordance, the 0.10 percent threshold choice and rarefaction convergence across iterations.
 
 ## Final filesystem
 
@@ -136,20 +136,16 @@ results/
   clonotypes/
   cache/
   final/
+  supplementary_tables/
 ```
 
-Final presentation tables are exactly:
+The main result folder contains exactly one specification table:
 
 ```text
-results/final/01_clone_master.csv
-results/final/02_candidates.csv
-results/final/03_patient_summary.csv
-results/final/04_threshold_sensitivity.csv
-results/final/05_feature_enrichment.csv
-results/final/06_validation.csv
+results/final/candidate_clones.csv
 ```
 
-The final candidate table contains `literature_query`. This is the handoff for a PubMed pass after the candidate list is fixed. Literature evidence is not invented inside the offline cluster workflow.
+The full clone master, patient summary, complete threshold sensitivity, enrichment, validation and iteration convergence tables are stored in `results/supplementary_tables`.
 
 ## Run
 
@@ -170,6 +166,7 @@ After completion:
 sacct -j "$jid" --format=JobID,JobName,State,ExitCode,Elapsed,MaxRSS
 find figures -maxdepth 2 -type f | sort
 find results/final -maxdepth 1 -type f | sort
+find results/supplementary_tables -maxdepth 1 -type f | sort
 ```
 
 Expected Slurm state is `COMPLETED` with exit code `0:0`.

@@ -45,6 +45,7 @@ for name, df in [("pairwise_rarefied", rare), ("simpson_no_downsampling", raw)]:
 # branch has direct point estimates. Duplicate raw values into the median columns so
 # downstream plotting can use one schema without altering the underlying numbers.
 for base in [
+    "n_T1_expanded", "n_T2_expanded",
     "expanded_jaccard", "retained_count_percent", "below_count_percent",
     "not_detected_count_percent", "retained_mass_percent", "below_mass_percent",
     "not_detected_mass_percent",

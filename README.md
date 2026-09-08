@@ -90,7 +90,7 @@ This controls finite sequencing depth but cannot remove PCR amplification bias b
 
 A complementary branch uses the observed normalized repertoire without read downsampling.
 
-Metrics follow PMID 37051229 / PMCID PMC10084475:
+The branch reports three deliberately different summaries:
 
 ```text
 Simpson D = sum(p_i squared)
@@ -98,9 +98,11 @@ Simpson clonality = sqrt(Simpson D)
 normalized richness = unique productive clonotypes / total productive TRB reads
 ```
 
-The paper also emphasizes top-expanded clonotypes above 1 percent. The workflow records the mass of such clones as article-style context, while the clone-fate analysis itself keeps the 0.10 percent primary threshold and applies the full 0.05 to 1.50 percent sensitivity grid.
+The workflow also records the mass of clonotypes above 1 percent as context, while the clone-fate analysis keeps the 0.10 percent primary threshold and applies the full 0.05 to 1.50 percent sensitivity grid.
 
 The same T1-to-T2 fate, direction, candidate, enrichment and specificity logic is repeated in this branch without downsampling.
+
+The two branches answer different questions. Repeated rarefaction is primary for clone-fate inference because it directly controls unequal read depth within each T1-T2 pair. Simpson D is useful for repertoire-wide concentration and uses every observed read, but it does not itself correct depth imbalance or establish that an absent clone was biologically lost. Therefore Simpson is a complementary robustness analysis rather than a replacement for rarefaction.
 
 ## Biological interpretation used in the presentation
 
@@ -140,24 +142,17 @@ figures/
 
 Only PNG figures are published. Temporary and duplicate exploratory figures are removed.
 
-The patient folder retains the Venn-based patient panels. The rarefied and Simpson folders contain only figures that map directly to the presentation logic: shared-clone changes, clone fate, sampling or threshold robustness, candidate dumbbells, TRBV context, enrichment and specificity.
+The patient folder retains the Venn-based patient panels. All final plots use the same typography and color system. The validation folder additionally contains a branch-concordance matrix, an explicit 0.10 percent threshold-choice figure and a rarefaction-iteration convergence figure.
 
 ## Final tables
 
-The finished run deliberately keeps only six presentation-level tables:
+The finished run keeps one concise specification table in the main result folder:
 
 ```text
-results/final/01_clone_master.csv
-results/final/02_candidates.csv
-results/final/03_patient_summary.csv
-results/final/04_threshold_sensitivity.csv
-results/final/05_feature_enrichment.csv
-results/final/06_validation.csv
+results/final/candidate_clones.csv
 ```
 
-Large reusable computational tables are moved to `results/cache`. MiXCR clone exports remain in `results/clonotypes`. Temporary `results/current` is deleted after successful publication.
-
-The candidate table contains a PubMed-ready `literature_query` for each primary candidate. Exact antigen annotations are retained when available. The actual literature review is intentionally performed after the final candidate list is produced because top contracted clones can change after sampling correction and threshold sensitivity analysis.
+The main table is restricted to accepted patients with both T1 and T2 and to T1-expanded candidate clonotypes. Full master, patient summary, threshold sensitivity, feature enrichment, validation and iteration-level convergence tables are placed in `results/supplementary_tables`. Large reusable computational tables are moved to `results/cache`. MiXCR clone exports remain in `results/clonotypes`. Temporary `results/current` is deleted after successful publication.
 
 ## Run
 

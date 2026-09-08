@@ -3,8 +3,7 @@
 
 The final presentation has two parallel analytical branches:
 1. pair-specific repeated rarefaction, the primary sampling-controlled branch;
-2. no-downsampling observed frequencies with Simpson metrics implemented as in
-   PMID 37051229 / PMCID PMC10084475.
+2. no-downsampling observed frequencies with Simpson repertoire metrics.
 
 Only figures and tables that answer an explicit specification question are published.
 Old exploratory heatmaps and duplicate summaries are not retained in the final tree.
@@ -22,6 +21,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 from statsmodels.stats.multitest import multipletests
+from plot_style import (
+    AGE_COLORS, BRANCH_COLORS, COLORS, FATE_COLORS, TIME_COLORS,
+    annotate_ranked_points, finish_axis, panel_label,
+)
 
 warnings.filterwarnings("ignore")
 ROOT = Path(os.environ.get("MEASLES_REPO", Path.cwd())).resolve()
@@ -31,11 +34,12 @@ FINAL = RESULTS / "final"
 FIG = ROOT / "figures"
 
 PRIMARY = 0.001
-THRESHOLD_PCT = [0.05, 0.10, 0.20, 0.50]
+THRESHOLD_PCT = [0.05, 0.10] + [round(x / 10, 2) for x in range(2, 16)]
 
 for p in [CURRENT / "paired_T1_clone_master_nt.csv", CURRENT / "pairwise_threshold_sensitivity.csv",
           CURRENT / "simpson_raw_patient_metrics.csv", CURRENT / "simpson_raw_threshold_sensitivity.csv",
-          CURRENT / "simpson_raw_primary_candidates.csv"]:
+          CURRENT / "simpson_raw_primary_candidates.csv",
+          CURRENT / "downsampling_iteration_convergence.csv"]:
     if not p.exists():
         raise FileNotFoundError(f"Required input is missing: {p}")
 
@@ -45,6 +49,7 @@ rare_patient = pd.read_csv(CURRENT / "pairwise_rarefaction_summary.csv")
 raw_metrics = pd.read_csv(CURRENT / "simpson_raw_patient_metrics.csv")
 raw_sens = pd.read_csv(CURRENT / "simpson_raw_threshold_sensitivity.csv")
 raw_candidates = pd.read_csv(CURRENT / "simpson_raw_primary_candidates.csv")
+convergence = pd.read_csv(CURRENT / "downsampling_iteration_convergence.csv")
 
 for c in ["T1_fraction", "T2_fraction", "T1_fraction_rarefied_median", "T2_fraction_rarefied_median",
           "P_detection_if_unchanged_empirical"]:
@@ -215,45 +220,59 @@ if not rare_enrich.empty:
 raw_enrich = enrichment_for_branch(master, "simpson_no_downsampling")
 enrichment = pd.concat([rare_enrich, raw_enrich], ignore_index=True, sort=False)
 
-# Curated final tables.
-if FINAL.exists():
-    shutil.rmtree(FINAL)
-FINAL.mkdir(parents=True, exist_ok=True)
+# Curated output tables.
+SUPP = RESULTS / "supplementary_tables"
+for outdir in [FINAL, SUPP]:
+    if outdir.exists():
+        shutil.rmtree(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
 
-final_cols = [c for c in [
-    "patient", "clone_id_nt", "cdr3nt", "cdr3aa", "TRBV", "TRBJ", "age", "age_group",
-    "T1_count", "T2_count", "T1_fraction", "T2_fraction", "fate_0_10_percent",
-    "absolute_delta", "log2_T2_over_T1", "fold_contraction", "T1_expanded_mass_share",
-    "T2_zero_upper_95", "P_detection_if_unchanged_empirical", "sampling_robust_not_detected",
-    "T1_fraction_rarefied_median", "T2_fraction_rarefied_median", "rarefied_log2_T2_over_T1",
-    "rarefied_direction_0_10_percent", "raw_log2_T2_over_T1", "raw_absolute_delta",
-    "raw_fold_contraction", "raw_direction_0_10_percent", "public_private", "control_prevalence",
-    "known_antigen_final", "specificity_class", "HLA_compatible", "motif_cluster", "T3_fate",
-    "sequencing_source_T1", "sequencing_source_T2", "candidate_class_rarefied",
-    "candidate_class_simpson_raw", "literature_query", "literature_status"
-] if c in master.columns]
-master[final_cols].to_csv(FINAL / "01_clone_master.csv", index=False)
-
+paired_patients = set(rare_patient["patient"].astype(str))
+master = master[master["patient"].astype(str).isin(paired_patients)].copy()
+primary_mask = primary_mask.loc[master.index]
 candidates = master[primary_mask].copy()
-cand_cols = [c for c in final_cols if c in candidates.columns]
-candidates[cand_cols].sort_values(["patient", "T1_fraction"], ascending=[True, False]).to_csv(FINAL / "02_candidates.csv", index=False)
+for source, target in [
+    ("T1_fraction", "T1_fraction_percent"),
+    ("T2_fraction", "T2_fraction_percent"),
+    ("T1_fraction_rarefied_median", "T1_rarefied_median_percent"),
+    ("T2_fraction_rarefied_median", "T2_rarefied_median_percent"),
+]:
+    candidates[target] = 100 * pd.to_numeric(candidates[source], errors="coerce")
+candidates = candidates.rename(columns={
+    "rarefied_direction_0_10_percent": "direction_pairwise_rarefaction",
+    "raw_direction_0_10_percent": "direction_observed_frequency",
+    "candidate_class_rarefied": "candidate_interpretation",
+})
+candidate_cols = [c for c in [
+    "patient", "age_group", "cdr3nt", "cdr3aa", "TRBV", "TRBJ",
+    "T1_count", "T2_count", "T1_fraction_percent", "T2_fraction_percent",
+    "T1_rarefied_median_percent", "T2_rarefied_median_percent",
+    "direction_pairwise_rarefaction", "direction_observed_frequency",
+    "P_detection_if_unchanged_empirical", "sampling_robust_not_detected",
+    "public_private", "control_prevalence", "known_antigen_final", "specificity_class",
+    "T3_fate", "candidate_interpretation",
+] if c in candidates.columns]
+candidates[candidate_cols].sort_values(
+    ["patient", "T1_fraction_percent"], ascending=[True, False]
+).to_csv(FINAL / "candidate_clones.csv", index=False)
 
-# Patient summary: rarefied metrics plus article-style raw Simpson metrics.
-raw_wide = raw_metrics.pivot(index=["patient", "age_group"], columns="timepoint",
-                             values=["simpson_D", "simpson_clonality", "normalized_richness", "top_gt1_mass"])
+# Technical and supporting outputs are kept out of the main results folder.
+master.to_csv(SUPP / "01_full_clone_master.csv", index=False)
+raw_wide = raw_metrics.pivot(
+    index=["patient", "age_group"], columns="timepoint",
+    values=["simpson_D", "simpson_clonality", "normalized_richness", "top_gt1_mass"],
+)
 raw_wide.columns = [f"{metric}_{point}" for metric, point in raw_wide.columns]
-raw_wide = raw_wide.reset_index()
-patient_summary = rare_patient.merge(raw_wide, on=["patient", "age_group"], how="left")
-patient_summary.to_csv(FINAL / "03_patient_summary.csv", index=False)
+patient_summary = rare_patient.merge(raw_wide.reset_index(), on=["patient", "age_group"], how="left")
+patient_summary.to_csv(SUPP / "02_patient_summary.csv", index=False)
 
-rare_sens2 = rare_sens[rare_sens.threshold_percent.round(6).isin(THRESHOLD_PCT)].copy()
-rare_sens2["branch"] = "pairwise_rarefied"
-raw_sens2 = raw_sens[raw_sens.threshold_percent.round(6).isin(THRESHOLD_PCT)].copy()
-threshold_final = pd.concat([rare_sens2, raw_sens2], ignore_index=True, sort=False)
-threshold_final.to_csv(FINAL / "04_threshold_sensitivity.csv", index=False)
-enrichment.to_csv(FINAL / "05_feature_enrichment.csv", index=False)
+extended_path = RESULTS / "expanded_threshold_sensitivity_extended.csv"
+if not extended_path.exists():
+    raise FileNotFoundError(extended_path)
+threshold_final = pd.read_csv(extended_path)
+threshold_final.to_csv(SUPP / "03_threshold_sensitivity.csv", index=False)
+enrichment.to_csv(SUPP / "04_feature_enrichment.csv", index=False)
 
-# Validation in one long purposeful table.
 validation_parts = []
 for label, filename in [
     ("identity", "repertoire_identity_qc.csv"),
@@ -262,235 +281,525 @@ for label, filename in [
 ]:
     p = CURRENT / filename
     if p.exists() and p.stat().st_size > 1:
-        x = pd.read_csv(p); x.insert(0, "validation_type", label); validation_parts.append(x)
+        x = pd.read_csv(p)
+        x.insert(0, "validation_type", label)
+        validation_parts.append(x)
 validation = pd.concat(validation_parts, ignore_index=True, sort=False) if validation_parts else pd.DataFrame()
-validation.to_csv(FINAL / "06_validation.csv", index=False)
+validation.to_csv(SUPP / "05_validation.csv", index=False)
+convergence.to_csv(SUPP / "06_downsampling_iteration_convergence.csv", index=False)
 
-# Final figure tree. PNG only to avoid duplicate clutter.
-for d in ["current", "group", "main", "downsampling_pairwise", "sensitivity_thresholds", "supplementary", "rarefied", "simpson_raw", "validation", "patients"]:
+# Final figure tree. PNG only, because duplicate PDF copies obscured the intended result set.
+for d in [
+    "group", "main", "downsampling_pairwise", "sensitivity_thresholds",
+    "supplementary", "rarefied", "simpson_raw", "validation", "patients",
+]:
     p = FIG / d
-    if d not in {"current"} and p.exists():
+    if p.exists():
         shutil.rmtree(p)
 for d in [FIG / "patients", FIG / "rarefied", FIG / "simpson_raw", FIG / "validation"]:
     d.mkdir(parents=True, exist_ok=True)
-
-# Keep patient panels because they are the requested Venn layer before cohort aggregation.
 patient_src = FIG / "current" / "patients"
 if patient_src.exists():
     for p in sorted(patient_src.glob("*.png")):
         shutil.copy2(p, FIG / "patients" / p.name)
 
 
-def mean_by_age(df, value):
-    return [pd.to_numeric(df.loc[df.age_group.eq(a), value], errors="coerce").mean() for a in ["child", "adult"]]
+def label_for_clone(row):
+    return f'{row.patient}  {short_seq(row.cdr3aa, 16)}  {row.TRBV}'
 
 
-def stacked_fate(ax, sens, title):
+def mean_by_age(df, value, age):
+    return float(pd.to_numeric(df.loc[df.age_group.eq(age), value], errors="coerce").mean())
+
+
+def stacked_fate(ax, sens, title, suffix):
     z = sens[np.isclose(pd.to_numeric(sens.threshold_percent, errors="coerce"), 0.10)].copy()
-    xs = np.arange(2)
-    bottom = np.zeros(2)
-    for col, label in [("retained_mass_percent_median", "Retained expanded"),
-                       ("below_mass_percent_median", "Detected below threshold"),
-                       ("not_detected_mass_percent_median", "Not detected")]:
-        if col not in z.columns:
-            col = col.replace("_median", "")
-        vals = np.array(mean_by_age(z, col), dtype=float)
-        ax.bar(xs, vals, bottom=bottom, label=label)
-        bottom += np.nan_to_num(vals)
-    ax.set_xticks(xs, ["Children", "Adults"])
+    xs, ages, bottom = np.arange(2), ["child", "adult"], np.zeros(2)
+    specs = [
+        ("retained_mass_percent" + suffix, "Retained expanded"),
+        ("below_mass_percent" + suffix, "Detected below threshold"),
+        ("not_detected_mass_percent" + suffix, "Not detected"),
+    ]
+    for col, label in specs:
+        values = np.array([mean_by_age(z, col, age) for age in ages], dtype=float)
+        bars = ax.bar(xs, values, bottom=bottom, width=0.62, label=label,
+                      color=FATE_COLORS[label], edgecolor="white", linewidth=0.8)
+        for bar, value, base in zip(bars, values, bottom):
+            if np.isfinite(value) and value >= 5:
+                ax.text(bar.get_x() + bar.get_width() / 2, base + value / 2,
+                        f"{value:.1f}%", ha="center", va="center", fontsize=8)
+        bottom += np.nan_to_num(values)
+    counts = [z.loc[z.age_group.eq(age), "patient"].nunique() for age in ages]
+    ax.set_xticks(xs, [f"Children\n(n={counts[0]} paired)", f"Adults\n(n={counts[1]} paired)"])
     ax.set_ylim(0, 100)
-    ax.set_ylabel("Percent of T1 expanded repertoire mass")
+    ax.set_ylabel("Mean share of each patient's T1-expanded mass (%)")
     ax.set_title(title)
-    ax.legend(fontsize=8)
+    finish_axis(ax, "y")
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=3)
 
 
-def shared_scatter(ax, df, xcol, ycol, title):
-    z = df[primary_mask & pd.to_numeric(df[ycol], errors="coerce").gt(0)].copy()
-    x = 100 * pd.to_numeric(z[xcol], errors="coerce")
-    y = 100 * pd.to_numeric(z[ycol], errors="coerce")
-    ax.scatter(x, y, s=14, alpha=0.35)
-    lim = max(float(np.nanmax(x)) if len(x) else 1, float(np.nanmax(y)) if len(y) else 1)
-    ax.plot([0, lim], [0, lim], linestyle="--", linewidth=1)
-    ax.set_xlabel("T1 repertoire fraction, percent")
-    ax.set_ylabel("T2 repertoire fraction, percent")
-    ax.set_title(title)
-    ax.grid(alpha=0.2)
+def shared_scatter(ax, xcol, ycol, title, dircol):
+    z = master[
+        primary_mask & pd.to_numeric(master[ycol], errors="coerce").gt(0)
+    ].copy()
+    x = 100 * pd.to_numeric(z[xcol], errors="coerce").to_numpy(float)
+    y = 100 * pd.to_numeric(z[ycol], errors="coerce").to_numpy(float)
+    direction = z[dircol].astype(str)
+    colors = {"increased": COLORS["teal"], "stable": COLORS["blue"], "decreased": COLORS["orange"]}
+    for label in ["increased", "stable", "decreased"]:
+        keep = direction.eq(label).to_numpy()
+        ax.scatter(x[keep], y[keep], s=25, alpha=0.56, color=colors[label],
+                   edgecolor="white", linewidth=0.35, label=label.title())
+    positive = np.concatenate([x[x > 0], y[y > 0]])
+    lo = max(float(np.nanmin(positive)) * 0.72, 1e-4) if len(positive) else 0.01
+    hi = float(np.nanmax(positive)) * 1.35 if len(positive) else 1.0
+    ax.plot([lo, hi], [lo, hi], linestyle="--", color=COLORS["gray"], linewidth=1)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set(xlim=(lo, hi), ylim=(lo, hi),
+           xlabel="T1 repertoire fraction (%)", ylabel="T2 repertoire fraction (%)",
+           title=title)
+    finish_axis(ax, "both")
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=3,
+              title="T2 relative to T1")
+    labels = np.array([label_for_clone(r) for r in z.itertuples(index=False)], dtype=object)
+    annotate_ranked_points(ax, x, y, labels, np.argsort(-np.maximum(x, y))[:10])
 
-# RAREFIED 01: shared segment plus complete fate.
-fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.5), constrained_layout=True)
-shared_scatter(axes[0], master, "T1_fraction_rarefied_median", "T2_fraction_rarefied_median",
-               "Shared T1-expanded clonotypes change in representation")
-stacked_fate(axes[1], rare_sens2, "Fate of T1 expanded repertoire after pair-specific rarefaction")
-fig.suptitle("Primary sampling-controlled T1 to T2 clone fate", fontsize=14, fontweight="bold")
-fig.savefig(FIG / "rarefied" / "01_shared_and_fate.png", dpi=220, bbox_inches="tight"); plt.close(fig)
 
-# RAREFIED 02: sampling null and threshold sensitivity.
-fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.5), constrained_layout=True)
+def plot_threshold_lines(ax, sens, branches, ages=True):
+    names = {"pairwise_rarefied": "Repeated rarefaction",
+             "simpson_no_downsampling": "Observed frequency"}
+    for branch in branches:
+        q_branch = sens[sens.branch.eq(branch)].copy()
+        groups = [("child", "Children"), ("adult", "Adults")] if ages else [(None, "All paired patients")]
+        for age, age_label in groups:
+            q = q_branch if age is None else q_branch[q_branch.age_group.eq(age)]
+            g = q.groupby("threshold_percent")["not_detected_mass_percent_median"].mean().reindex(THRESHOLD_PCT)
+            ax.plot(
+                g.index, g.values, marker="o", ms=3.5,
+                linestyle="-" if branch == "pairwise_rarefied" else "--",
+                color=AGE_COLORS[age] if age else BRANCH_COLORS[branch],
+                label=f"{names[branch]}: {age_label}" if ages else names[branch],
+            )
+    ax.axvline(0.10, color=COLORS["ink"], linestyle=":", linewidth=1.2)
+    ax.text(0.10, 0.98, " selected 0.10%", transform=ax.get_xaxis_transform(),
+            ha="left", va="top", fontsize=8)
+    ax.set_xticks(THRESHOLD_PCT)
+    ax.tick_params(axis="x", rotation=45)
+    ax.set_xlabel("T1 expansion threshold (%)")
+    ax.set_ylabel("Mean T1 mass not detected at T2 (%)")
+    finish_axis(ax, "both")
+
+
+# Rarefied 01: shared clones and cohort-mean fate.
+fig, axes = plt.subplots(1, 2, figsize=(14.2, 6.1), constrained_layout=True)
+shared_scatter(
+    axes[0], "T1_fraction_rarefied_median", "T2_fraction_rarefied_median",
+    "Shared T1-expanded clones after repeated rarefaction\nTop 10 by maximum T1/T2 fraction are labelled",
+    "rarefied_direction_0_10_percent",
+)
+stacked_fate(
+    axes[1], threshold_final[threshold_final.branch.eq("pairwise_rarefied")],
+    "Cohort mean clone fate at the selected 0.10% threshold\nEach patient contributes one T1–T2 repertoire pair",
+    "_median",
+)
+panel_label(axes[0], "A")
+panel_label(axes[1], "B")
+fig.suptitle("Primary sampling-controlled analysis", fontsize=15, fontweight="bold", color=COLORS["ink"])
+fig.savefig(FIG / "rarefied" / "01_shared_and_fate.png", bbox_inches="tight")
+plt.close(fig)
+
+# Rarefied 02: expected versus observed detection, plus threshold sensitivity.
+fig, axes = plt.subplots(1, 2, figsize=(14.2, 5.8), constrained_layout=True)
 z = master[primary_mask].copy()
-pdet = pd.to_numeric(z.P_detection_if_unchanged_empirical, errors="coerce")
-axes[0].scatter(100*z.T1_fraction, pdet, s=14, alpha=0.35)
-rob = truthy(z["sampling_robust_not_detected"]) if "sampling_robust_not_detected" in z.columns else pd.Series(False, index=z.index)
-axes[0].scatter(100*z.loc[rob, "T1_fraction"], pdet.loc[rob], marker="*", s=60, label="Sampling-robust not detected")
-axes[0].set_xlabel("T1 repertoire fraction, percent"); axes[0].set_ylabel("P detection if unchanged")
-axes[0].set_ylim(0, 1.02); axes[0].set_title("Internal T1 sampling null"); axes[0].legend(fontsize=8); axes[0].grid(alpha=0.2)
-for age, label in [("child", "Children"), ("adult", "Adults")]:
-    q = rare_sens2[rare_sens2.age_group.eq(age)]
-    g = q.groupby("threshold_percent")["not_detected_mass_percent_median"].mean()
-    axes[1].plot(g.index, g.values, marker="o", label=label)
-axes[1].set_xlabel("Expanded threshold, percent"); axes[1].set_ylabel("Mean T1 mass not detected at T2, percent")
-axes[1].set_title("Threshold sensitivity of apparent loss"); axes[1].legend(); axes[1].grid(alpha=0.2)
-fig.savefig(FIG / "rarefied" / "02_sampling_and_sensitivity.png", dpi=220, bbox_inches="tight"); plt.close(fig)
+x = pd.to_numeric(z["P_detection_if_unchanged_empirical"], errors="coerce").to_numpy(float)
+y = pd.to_numeric(z["P_detection_in_observed_T2_rarefactions"], errors="coerce").to_numpy(float)
+robust = truthy(z["sampling_robust_not_detected"]) if "sampling_robust_not_detected" in z.columns else pd.Series(False, index=z.index)
+axes[0].fill_between([0.8, 1.0], 0, 0.2, color=COLORS["orange"], alpha=0.10)
+axes[0].scatter(x[~robust.to_numpy()], y[~robust.to_numpy()], s=24, alpha=0.45,
+                color=COLORS["blue"], edgecolor="white", linewidth=0.3, label="Other T1-expanded clones")
+axes[0].scatter(x[robust.to_numpy()], y[robust.to_numpy()], marker="*", s=85,
+                color=COLORS["orange"], edgecolor=COLORS["ink"], linewidth=0.35,
+                label="Sampling-robust absence at T2")
+axes[0].plot([0, 1], [0, 1], linestyle="--", color=COLORS["gray"], linewidth=1)
+axes[0].set(xlim=(0, 1.01), ylim=(0, 1.01),
+            xlabel="Expected detection probability if T1 abundance were unchanged",
+            ylabel="Observed T2 detection probability across rarefactions",
+            title="Internal sampling control\nBottom-right clones disappear more often than depth alone predicts")
+finish_axis(axes[0], "both")
+axes[0].legend(loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=2)
+labels = np.array([label_for_clone(r) for r in z.itertuples(index=False)], dtype=object)
+annotate_ranked_points(axes[0], x, y, labels, np.argsort(-np.nan_to_num(x - y, nan=-np.inf))[:10],
+                       color=COLORS["orange"])
+plot_threshold_lines(axes[1], threshold_final, ["pairwise_rarefied"], ages=True)
+axes[1].set_title("Sensitivity to the expansion threshold\nComplete 0.05–1.50% grid without an empty interval")
+axes[1].legend(loc="best")
+panel_label(axes[0], "A")
+panel_label(axes[1], "B")
+fig.suptitle("Sampling robustness and threshold sensitivity", fontsize=15, fontweight="bold", color=COLORS["ink"])
+fig.savefig(FIG / "rarefied" / "02_sampling_and_sensitivity.png", bbox_inches="tight")
+plt.close(fig)
 
 
 def dumbbell_and_trbv(branch, xcol, ycol, dircol, outfile):
-    z = master[primary_mask].copy()
-    z = z[pd.to_numeric(z[ycol], errors="coerce").gt(0)].copy()
-    groups = []
-    for cat in ["increased", "stable", "decreased"]:
-        q = z[z[dircol].astype(str).eq(cat)].copy()
-        if cat == "increased": q = q.sort_values("rarefied_log2_T2_over_T1" if branch=="rarefied" else "raw_log2_T2_over_T1", ascending=False).head(5)
-        elif cat == "decreased": q = q.sort_values("rarefied_log2_T2_over_T1" if branch=="rarefied" else "raw_log2_T2_over_T1", ascending=True).head(5)
+    paired = master[
+        primary_mask & master.patient.astype(str).isin(paired_patients)
+        & pd.to_numeric(master[ycol], errors="coerce").gt(0)
+    ].copy()
+    log_col = "rarefied_log2_T2_over_T1" if branch == "rarefied" else "raw_log2_T2_over_T1"
+    blocks = []
+    for category in ["increased", "stable", "decreased"]:
+        q = paired[paired[dircol].astype(str).eq(category)].copy()
+        q[log_col] = pd.to_numeric(q[log_col], errors="coerce")
+        if category == "increased":
+            q = q.sort_values(log_col, ascending=False).head(5)
+        elif category == "decreased":
+            q = q.sort_values(log_col, ascending=True).head(5)
         else:
-            col = "rarefied_log2_T2_over_T1" if branch=="rarefied" else "raw_log2_T2_over_T1"
-            q = q.assign(absfc=pd.to_numeric(q[col], errors="coerce").abs()).sort_values("absfc").head(5)
-        q["display_group"] = cat
-        groups.append(q)
-    top = pd.concat(groups, ignore_index=True) if groups else pd.DataFrame()
-    fig, axes = plt.subplots(1, 2, figsize=(15, 7), constrained_layout=True)
+            q = q.assign(abs_change=q[log_col].abs()).sort_values("abs_change").head(5)
+        q = q.reset_index(drop=True)
+        q["rank_within_direction"] = np.arange(1, len(q) + 1)
+        q["direction_block"] = category
+        blocks.append(q)
+    top = pd.concat(blocks, ignore_index=True) if blocks else pd.DataFrame()
+
+    fig, axes = plt.subplots(1, 2, figsize=(15.5, 7.8), constrained_layout=True,
+                             gridspec_kw={"width_ratios": [1.62, 1]})
     if top.empty:
-        axes[0].text(0.5,0.5,"No nonzero candidates",ha="center"); axes[0].axis("off")
+        axes[0].text(0.5, 0.5, "No nonzero paired T1–T2 candidates", ha="center", va="center")
+        axes[0].axis("off")
     else:
-        labels = [f'{r.patient} {short_seq(r.cdr3aa)} {r.TRBV}' for r in top.itertuples(index=False)]
-        y = np.arange(len(top))
-        x1 = 100*pd.to_numeric(top[xcol], errors="coerce").to_numpy(float)
-        x2 = 100*pd.to_numeric(top[ycol], errors="coerce").to_numpy(float)
-        for yi,a,b in zip(y,x1,x2): axes[0].plot([a,b],[yi,yi],linewidth=1)
-        axes[0].scatter(x1,y,label="T1",s=32); axes[0].scatter(x2,y,label="T2",s=32)
-        axes[0].set_yticks(y,labels); axes[0].invert_yaxis(); axes[0].set_xlabel("Repertoire fraction, percent")
-        axes[0].set_title("Top 5 increased, stable and decreased nonzero clonotypes")
-        axes[0].legend(); axes[0].grid(axis="x",alpha=0.2)
-    dec = z[z[dircol].astype(str).eq("decreased")].copy()
-    if dec.empty:
-        axes[1].text(0.5,0.5,"No decreased nonzero clonotypes",ha="center"); axes[1].axis("off")
+        y_pos = np.arange(len(top))
+        t1 = 100 * pd.to_numeric(top[xcol], errors="coerce").to_numpy(float)
+        t2 = 100 * pd.to_numeric(top[ycol], errors="coerce").to_numpy(float)
+        for yi, a, b in zip(y_pos, t1, t2):
+            axes[0].plot([a, b], [yi, yi], color=COLORS["light_gray"], linewidth=2.2, zorder=1)
+        axes[0].scatter(t1, y_pos, color=TIME_COLORS["T1"], s=34, label="T1", zorder=3)
+        axes[0].scatter(t2, y_pos, color=TIME_COLORS["T2"], s=34, label="T2", zorder=3)
+        labels = [
+            f'{r.direction_block.title()} {int(r.rank_within_direction)}  |  '
+            f'{r.patient}  {short_seq(r.cdr3aa, 15)}  {r.TRBV}'
+            for r in top.itertuples(index=False)
+        ]
+        axes[0].set_yticks(y_pos, labels)
+        axes[0].invert_yaxis()
+        axes[0].set_xlabel("Repertoire fraction (%)")
+        axes[0].set_title("Top five paired clones in each direction\nRanks run from 1 to 5 within each block")
+        for boundary in [4.5, 9.5]:
+            if boundary < len(top):
+                axes[0].axhline(boundary, color=COLORS["gray"], linestyle="--", linewidth=0.9)
+        for start, color in zip([0, 5, 10], [COLORS["teal"], COLORS["blue"], COLORS["orange"]]):
+            if start < len(top):
+                axes[0].axhspan(start - 0.5, min(start + 4.5, len(top) - 0.5),
+                                color=color, alpha=0.045, zorder=0)
+        axes[0].legend(loc="lower right")
+        finish_axis(axes[0], "x")
+
+    decreased = paired[paired[dircol].astype(str).eq("decreased")].copy()
+    if decreased.empty:
+        axes[1].text(0.5, 0.5, "No decreased nonzero clonotypes", ha="center", va="center")
+        axes[1].axis("off")
     else:
-        g = dec.groupby("TRBV")[xcol].sum().sort_values(ascending=False).head(10).sort_values()
-        axes[1].barh(g.index,100*g.values); axes[1].set_xlabel("T1 repertoire fraction carried by decreased clones, percent")
-        axes[1].set_title("TRBV carried by the most decreased nonzero clone pool"); axes[1].grid(axis="x",alpha=0.2)
-    fig.suptitle("Candidate clone trajectories and TRBV context", fontsize=14, fontweight="bold")
-    fig.savefig(outfile,dpi=220,bbox_inches="tight"); plt.close(fig)
+        g = decreased.groupby("TRBV")[xcol].sum().sort_values(ascending=False).head(10).sort_values()
+        axes[1].barh(g.index, 100 * g.values, color=COLORS["orange"], alpha=0.88)
+        axes[1].set_xlabel("T1 repertoire fraction carried by decreased clones (%)")
+        axes[1].set_title("TRBV context of the decreased clone pool\nTop 10 genes by cumulative T1 fraction")
+        finish_axis(axes[1], "x")
+    panel_label(axes[0], "A")
+    panel_label(axes[1], "B")
+    name = "Repeated rarefaction" if branch == "rarefied" else "Observed frequencies without downsampling"
+    fig.suptitle(f"Candidate trajectories: {name}", fontsize=15, fontweight="bold", color=COLORS["ink"])
+    fig.savefig(outfile, bbox_inches="tight")
+    plt.close(fig)
 
-dumbbell_and_trbv("rarefied", "T1_fraction_rarefied_median", "T2_fraction_rarefied_median",
-                  "rarefied_direction_0_10_percent", FIG/"rarefied"/"03_candidate_dumbbell_and_trbv.png")
+
+dumbbell_and_trbv(
+    "rarefied", "T1_fraction_rarefied_median", "T2_fraction_rarefied_median",
+    "rarefied_direction_0_10_percent", FIG / "rarefied" / "03_candidate_dumbbell_and_trbv.png",
+)
 
 
-def enrichment_specificity(branch, outfile, affected_mask):
-    fig, axes = plt.subplots(1,2,figsize=(14,6),constrained_layout=True)
+def enrichment_plot(branch, outfile):
+    fig, ax = plt.subplots(figsize=(9.8, 6.4), constrained_layout=True)
     e = enrichment[enrichment.branch.astype(str).eq(branch)].copy() if not enrichment.empty else pd.DataFrame()
-    e = e[pd.to_numeric(e.get("fdr", np.nan), errors="coerce").le(0.05)].copy() if not e.empty else e
+    if not e.empty:
+        e = e[pd.to_numeric(e.get("fdr", np.nan), errors="coerce").le(0.05)].copy()
     if e.empty:
-        axes[0].text(0.5,0.5,"No features pass FDR 0.05",ha="center",va="center"); axes[0].axis("off")
+        ax.text(0.5, 0.54, "No TRBV, TRBJ or CDR3 3-mer feature passes BH FDR ≤ 0.05",
+                ha="center", va="center", fontsize=11, transform=ax.transAxes)
+        ax.text(0.5, 0.45, "The empty result is retained because it is the statistical conclusion.",
+                ha="center", va="center", fontsize=9, color=COLORS["gray"], transform=ax.transAxes)
+        ax.set_axis_off()
     else:
-        e = e.assign(abscoef=pd.to_numeric(e.log_odds_affected_vs_retained, errors="coerce").abs()).sort_values("abscoef",ascending=False).head(12).sort_values("log_odds_affected_vs_retained")
-        y=np.arange(len(e)); coef=pd.to_numeric(e.log_odds_affected_vs_retained,errors="coerce").to_numpy(float)
-        se=pd.to_numeric(e.get("standard_error",np.nan),errors="coerce").to_numpy(float)
-        axes[0].errorbar(coef,y,xerr=1.96*se,fmt="o"); axes[0].axvline(0,linewidth=1)
-        axes[0].set_yticks(y,[f'{a}:{b}' for a,b in zip(e.feature_type,e.feature)])
-        axes[0].set_xlabel("Log odds affected versus retained"); axes[0].set_title("Patient-aware enriched features, FDR at most 0.05")
-    a = master[primary_mask & affected_mask].copy()
-    if a.empty:
-        axes[1].text(0.5,0.5,"No affected candidates",ha="center"); axes[1].axis("off")
-    else:
-        counts=a.specificity_class.value_counts().reindex(["measles-associated","known non-measles memory or other specificity","unknown"],fill_value=0)
-        axes[1].barh(counts.index,counts.values); axes[1].set_xlabel("Affected T1-expanded clonotypes")
-        axes[1].set_title("Specificity fork for contracted or lost candidates")
-    fig.savefig(outfile,dpi=220,bbox_inches="tight"); plt.close(fig)
+        e = e.assign(abscoef=pd.to_numeric(e.log_odds_affected_vs_retained, errors="coerce").abs())
+        e = e.sort_values("abscoef", ascending=False).head(12).sort_values("log_odds_affected_vs_retained")
+        y_pos = np.arange(len(e))
+        coef = pd.to_numeric(e.log_odds_affected_vs_retained, errors="coerce").to_numpy(float)
+        se = pd.to_numeric(e.get("standard_error", np.nan), errors="coerce").to_numpy(float)
+        ax.errorbar(coef, y_pos, xerr=1.96 * se, fmt="none", ecolor=COLORS["gray"],
+                    elinewidth=1.2, capsize=2.5)
+        ax.scatter(coef, y_pos, c=np.where(coef >= 0, COLORS["orange"], COLORS["teal"]),
+                   s=42, zorder=3)
+        ax.axvline(0, color=COLORS["ink"], linewidth=0.9)
+        ax.set_yticks(y_pos, [f'{a}: {b}' for a, b in zip(e.feature_type, e.feature)])
+        ax.set_xlabel("Log odds of affected versus retained clone")
+        finish_axis(ax, "x")
+    method = ("Patient-clustered GEE after repeated rarefaction"
+              if branch == "pairwise_rarefied"
+              else "Patient-clustered GEE using observed frequencies")
+    ax.set_title("Features enriched among contracted or lost T1-expanded clones\n"
+                 f"{method}; adjusted for log10(T1 fraction); BH FDR ≤ 0.05")
+    fig.savefig(outfile, bbox_inches="tight")
+    plt.close(fig)
 
-rare_aff = master.get("sampling_candidate_class", "").astype(str).isin(["sampling-robust not detected","strong contraction"])
-enrichment_specificity("pairwise_rarefied", FIG/"rarefied"/"04_enrichment_and_specificity.png", rare_aff)
 
-# SIMPSON RAW 01: article metrics plus raw fate.
-fig, axes = plt.subplots(2,2,figsize=(13,9),constrained_layout=True)
-for ax, metric, title in [
-    (axes[0,0],"simpson_clonality","Simpson clonality = sqrt(sum p squared)"),
-    (axes[0,1],"simpson_D","Simpson D = sum p squared"),
-    (axes[1,0],"normalized_richness","Normalized richness = unique productive clones divided by productive reads"),
+enrichment_plot("pairwise_rarefied", FIG / "rarefied" / "04_enrichment_and_specificity.png")
+
+# Observed-frequency branch 01: three distinct repertoire summaries and raw fate.
+fig, axes = plt.subplots(2, 2, figsize=(14.2, 9.5), constrained_layout=True)
+metric_specs = [
+    ("simpson_D", "Simpson D: clone concentration", "Higher values mean stronger dominance by large clones"),
+    ("simpson_clonality", "Square-root Simpson D: transformed concentration", "Same ranking as Simpson D; high values are compressed"),
+    ("normalized_richness", "Normalized richness: unique clones per productive read", "Higher values mean more distinct nucleotide clones relative to depth"),
+]
+for ax, (metric, title, subtitle) in zip(axes.flat[:3], metric_specs):
+    extreme = []
+    for patient, q in raw_metrics.groupby("patient"):
+        if not {"T1", "T2"}.issubset(set(q.timepoint)):
+            continue
+        a = float(q.loc[q.timepoint.eq("T1"), metric].iloc[0])
+        b = float(q.loc[q.timepoint.eq("T2"), metric].iloc[0])
+        age = str(q.age_group.iloc[0])
+        color = AGE_COLORS.get(age, COLORS["gray"])
+        ax.plot([1, 2], [a, b], color=color, alpha=0.34, linewidth=1)
+        ax.scatter([1, 2], [a, b], color=color, s=16, alpha=0.72)
+        extreme.append((abs(b - a), str(patient), b))
+    for rank, (_, patient, b) in enumerate(sorted(extreme, reverse=True)[:3]):
+        ax.annotate(patient, xy=(2, b), xycoords="data",
+                    xytext=(0.78, 0.88 - 0.11 * rank), textcoords="axes fraction",
+                    fontsize=7.5, ha="left", va="center",
+                    arrowprops={"arrowstyle": "-", "color": COLORS["gray"], "lw": 0.7},
+                    bbox={"facecolor": "white", "edgecolor": COLORS["light_gray"],
+                          "boxstyle": "round,pad=0.15", "alpha": 0.9})
+    ax.set_xticks([1, 2], ["T1\nearly infection", "T2\nrecovery"])
+    ax.set_title(f"{title}\n{subtitle}")
+    finish_axis(ax, "y")
+    delta = raw_metrics.pivot(index="patient", columns="timepoint", values=metric).dropna()
+    med = float((delta["T2"] - delta["T1"]).median()) if not delta.empty else np.nan
+    ax.text(0.02, 0.04, f"Median paired change: {med:+.3g}", transform=ax.transAxes, fontsize=8)
+stacked_fate(
+    axes[1, 1], threshold_final[threshold_final.branch.eq("simpson_no_downsampling")],
+    "Observed clone fate at the selected 0.10% threshold\nMean across paired patients; no read downsampling",
+    "_median",
+)
+from matplotlib.lines import Line2D
+axes[0, 0].legend(handles=[
+    Line2D([0], [0], color=AGE_COLORS["child"], marker="o", label="Children"),
+    Line2D([0], [0], color=AGE_COLORS["adult"], marker="o", label="Adults"),
+], loc="best")
+for label, ax in zip(["A", "B", "C", "D"], axes.flat):
+    panel_label(ax, label)
+fig.suptitle("Observed repertoires without downsampling: complementary diversity summaries",
+             fontsize=15, fontweight="bold", color=COLORS["ink"])
+fig.savefig(FIG / "simpson_raw" / "01_simpson_metrics_and_fate.png", bbox_inches="tight")
+plt.close(fig)
+
+# Direct clone-level and threshold-level comparison to the primary branch.
+fig, axes = plt.subplots(1, 2, figsize=(14.4, 5.9), constrained_layout=True)
+z = master[
+    primary_mask
+    & pd.to_numeric(master["rarefied_log2_T2_over_T1"], errors="coerce").notna()
+    & pd.to_numeric(master["raw_log2_T2_over_T1"], errors="coerce").notna()
+].copy()
+x = pd.to_numeric(z["rarefied_log2_T2_over_T1"], errors="coerce").to_numpy(float)
+y = pd.to_numeric(z["raw_log2_T2_over_T1"], errors="coerce").to_numpy(float)
+same = z["rarefied_direction_0_10_percent"].astype(str).eq(
+    z["raw_direction_0_10_percent"].astype(str)
+).to_numpy()
+axes[0].scatter(x[same], y[same], s=25, color=COLORS["teal"], alpha=0.48,
+                edgecolor="white", linewidth=0.3, label="Same direction class")
+axes[0].scatter(x[~same], y[~same], s=34, color=COLORS["orange"], alpha=0.78,
+                edgecolor="white", linewidth=0.3, label="Different direction class")
+limit = max(1.0, float(np.nanmax(np.abs(np.concatenate([x, y]))))) * 1.08 if len(x) else 1.0
+axes[0].plot([-limit, limit], [-limit, limit], linestyle="--", color=COLORS["gray"], linewidth=1)
+axes[0].axhline(0, color=COLORS["light_gray"], linewidth=0.8)
+axes[0].axvline(0, color=COLORS["light_gray"], linewidth=0.8)
+axes[0].set(xlim=(-limit, limit), ylim=(-limit, limit),
+            xlabel="Repeated rarefaction: log2(T2/T1)",
+            ylabel="Observed frequency: log2(T2/T1)",
+            title="Clone-level agreement between branches\nTop 10 absolute disagreements are labelled")
+finish_axis(axes[0], "both")
+axes[0].legend(loc="lower right")
+labels = np.array([label_for_clone(r) for r in z.itertuples(index=False)], dtype=object)
+annotate_ranked_points(axes[0], x, y, labels, np.argsort(-np.abs(x - y))[:10],
+                       color=COLORS["orange"])
+plot_threshold_lines(axes[1], threshold_final,
+                     ["pairwise_rarefied", "simpson_no_downsampling"], ages=True)
+axes[1].set_title("Threshold sensitivity in both branches\nSolid: repeated rarefaction; dashed: observed frequency")
+axes[1].legend(loc="best", fontsize=7.6)
+panel_label(axes[0], "A")
+panel_label(axes[1], "B")
+fig.suptitle("Primary and complementary branches: similarities and differences",
+             fontsize=15, fontweight="bold", color=COLORS["ink"])
+fig.savefig(FIG / "simpson_raw" / "02_shared_and_sensitivity.png", bbox_inches="tight")
+plt.close(fig)
+
+dumbbell_and_trbv(
+    "raw", "T1_fraction", "T2_fraction", "raw_direction_0_10_percent",
+    FIG / "simpson_raw" / "03_candidate_dumbbell_and_trbv.png",
+)
+enrichment_plot("simpson_no_downsampling", FIG / "simpson_raw" / "04_enrichment_and_specificity.png")
+
+old_val = FIG / "current" / "26_validation_identity_T3_batch.png"
+if old_val.exists():
+    shutil.copy2(old_val, FIG / "validation" / "01_identity_T3_batch.png")
+
+# Explicit branch-concordance matrix.
+direction_order = ["increased", "stable", "decreased", "not detected"]
+z = master[primary_mask].copy()
+tab = pd.crosstab(
+    pd.Categorical(z["rarefied_direction_0_10_percent"], categories=direction_order),
+    pd.Categorical(z["raw_direction_0_10_percent"], categories=direction_order),
+    dropna=False,
+)
+row_pct = tab.div(tab.sum(axis=1).replace(0, np.nan), axis=0) * 100
+fig, ax = plt.subplots(figsize=(8.2, 6.6), constrained_layout=True)
+im = ax.imshow(row_pct.to_numpy(float), vmin=0, vmax=100, cmap="Blues", aspect="auto")
+for i in range(tab.shape[0]):
+    for j in range(tab.shape[1]):
+        value, count = row_pct.iloc[i, j], int(tab.iloc[i, j])
+        ax.text(j, i, f"{count}\n{value:.1f}%" if np.isfinite(value) else f"{count}\nNA",
+                ha="center", va="center",
+                color="white" if np.isfinite(value) and value >= 55 else COLORS["ink"], fontsize=9)
+ax.set_xticks(np.arange(len(direction_order)), [x.title() for x in direction_order], rotation=25, ha="right")
+ax.set_yticks(np.arange(len(direction_order)), [x.title() for x in direction_order])
+ax.set_xlabel("Complementary branch: observed frequencies\n(Simpson metrics, no downsampling)")
+ax.set_ylabel("Primary branch: repeated pair-specific rarefaction")
+ax.set_title("Clone-direction concordance at the 0.10% threshold\nCells show clone count and row percentage")
+fig.colorbar(im, ax=ax, shrink=0.8, label="Percentage within rarefaction direction (%)")
+fig.savefig(FIG / "validation" / "02_branch_concordance.png", bbox_inches="tight")
+plt.close(fig)
+
+# Threshold-choice figure.
+fig, axes = plt.subplots(1, 2, figsize=(14.2, 5.7), constrained_layout=True)
+plot_threshold_lines(axes[0], threshold_final,
+                     ["pairwise_rarefied", "simpson_no_downsampling"], ages=False)
+axes[0].set_title("Apparent clone loss across thresholds\nAgreement between branches indicates robustness")
+axes[0].legend(loc="best")
+for branch, label in [
+    ("pairwise_rarefied", "Repeated rarefaction"),
+    ("simpson_no_downsampling", "Observed frequency"),
 ]:
-    for patient, z in raw_metrics.groupby("patient"):
-        if {"T1","T2"}.issubset(set(z.timepoint)):
-            a=float(z.loc[z.timepoint.eq("T1"),metric].iloc[0]); b=float(z.loc[z.timepoint.eq("T2"),metric].iloc[0])
-            ax.plot([1,2],[a,b],alpha=0.25); ax.scatter([1,2],[a,b],s=12)
-    ax.set_xticks([1,2],["T1","T2"]); ax.set_title(title); ax.grid(alpha=0.2)
-stacked_fate(axes[1,1], raw_sens2, "Observed fate without downsampling")
-fig.suptitle("No-downsampling Simpson branch following PMID 37051229",fontsize=14,fontweight="bold")
-fig.savefig(FIG/"simpson_raw"/"01_simpson_metrics_and_fate.png",dpi=220,bbox_inches="tight"); plt.close(fig)
+    q = threshold_final[threshold_final.branch.eq(branch)]
+    col = "n_T1_expanded_median" if "n_T1_expanded_median" in q.columns else "n_T1_expanded"
+    g = q.groupby("threshold_percent")[col].median().reindex(THRESHOLD_PCT)
+    axes[1].plot(g.index, g.values, marker="o", ms=4, color=BRANCH_COLORS[branch], label=label)
+axes[1].axvline(0.10, color=COLORS["ink"], linestyle=":", linewidth=1.2)
+axes[1].axvspan(0.075, 0.125, color=COLORS["gold"], alpha=0.18)
+axes[1].text(0.10, 0.98, " selected 0.10%", transform=axes[1].get_xaxis_transform(),
+             ha="left", va="top", fontsize=8)
+axes[1].set_xticks(THRESHOLD_PCT)
+axes[1].tick_params(axis="x", rotation=45)
+axes[1].set_xlabel("T1 expansion threshold (%)")
+axes[1].set_ylabel("Median T1-expanded clone count per patient")
+axes[1].set_title("Candidate coverage across thresholds\nHigher cutoffs progressively remove potentially informative clones")
+axes[1].legend(loc="best")
+finish_axis(axes[1], "both")
+panel_label(axes[0], "A")
+panel_label(axes[1], "B")
+fig.suptitle("Threshold choice: 0.10% retained as the primary expansion cutoff",
+             fontsize=15, fontweight="bold", color=COLORS["ink"])
+fig.text(0.5, -0.015,
+         "Rationale: 0.10% avoids the most sampling-sensitive 0.05% boundary while retaining "
+         "more candidate clones than stricter cutoffs. The full grid remains visible.",
+         ha="center", va="top", fontsize=8.5)
+fig.savefig(FIG / "validation" / "03_threshold_selection.png", bbox_inches="tight")
+plt.close(fig)
 
-# SIMPSON RAW 02: shared changes plus threshold sensitivity.
-fig, axes = plt.subplots(1,2,figsize=(13.5,5.5),constrained_layout=True)
-shared_scatter(axes[0], master, "T1_fraction", "T2_fraction", "Observed shared T1-expanded clonotypes")
-for age,label in [("child","Children"),("adult","Adults")]:
-    q=raw_sens2[raw_sens2.age_group.eq(age)]; g=q.groupby("threshold_percent")["not_detected_mass_percent"].mean()
-    axes[1].plot(g.index,g.values,marker="o",label=label)
-axes[1].set_xlabel("Expanded threshold, percent"); axes[1].set_ylabel("Mean T1 mass not detected at T2, percent")
-axes[1].set_title("Threshold sensitivity without downsampling"); axes[1].legend(); axes[1].grid(alpha=0.2)
-fig.savefig(FIG/"simpson_raw"/"02_shared_and_sensitivity.png",dpi=220,bbox_inches="tight"); plt.close(fig)
+# Iteration convergence of the repeated rarefaction.
+iter_means = convergence.groupby("iteration", as_index=True).agg(
+    not_detected_mass_percent=("not_detected_mass_percent", "mean"),
+    expanded_jaccard=("expanded_jaccard", "mean"),
+).sort_index()
+series = {
+    "T1 mass not detected at T2": iter_means["not_detected_mass_percent"],
+    "Expanded Jaccard × 100": 100 * iter_means["expanded_jaccard"],
+}
+colors = [COLORS["orange"], COLORS["teal"]]
+running = {name: values.expanding(min_periods=1).mean() for name, values in series.items()}
+errors = {name: (values - values.iloc[-1]).abs() for name, values in running.items()}
+combined_error = pd.concat(errors, axis=1).max(axis=1)
+stable_iteration = next(
+    (int(i) for i in combined_error.index if (combined_error.loc[i:] <= 1.0).all()),
+    None,
+)
+fig, axes = plt.subplots(1, 2, figsize=(13.8, 5.4), constrained_layout=True)
+for (name, values), color in zip(running.items(), colors):
+    axes[0].plot(values.index, values.values, color=color, label=name)
+    axes[0].axhline(values.iloc[-1], color=color, linestyle=":", linewidth=1)
+    axes[1].plot(errors[name].index, errors[name].values, color=color, label=name)
+axes[0].set(xlabel="Rarefaction iterations accumulated",
+            ylabel="Cumulative cohort estimate (%)",
+            title="Cumulative estimates at the primary 0.10% threshold\nDotted lines show the final estimate")
+finish_axis(axes[0], "both")
+axes[0].legend(loc="best")
+axes[1].axhspan(0, 1, color=COLORS["teal"], alpha=0.10)
+axes[1].axhline(1, color=COLORS["teal"], linestyle="--", linewidth=1, label="±1 percentage point")
+if stable_iteration is not None:
+    axes[1].axvline(stable_iteration, color=COLORS["ink"], linestyle=":", linewidth=1)
+    axes[1].text(stable_iteration, 0.96, f" stable from {stable_iteration}",
+                 transform=axes[1].get_xaxis_transform(), ha="left", va="top", fontsize=8)
+else:
+    axes[1].text(0.98, 0.96, "No joint ±1 pp stabilization within the run",
+                 transform=axes[1].transAxes, ha="right", va="top", fontsize=8)
+axes[1].set(xlabel="Rarefaction iterations accumulated",
+            ylabel="Absolute deviation from final estimate (percentage points)",
+            title="Monte Carlo convergence\nLower values mean that extra iterations change little")
+finish_axis(axes[1], "both")
+axes[1].legend(loc="best")
+panel_label(axes[0], "A")
+panel_label(axes[1], "B")
+fig.suptitle(f"Repeated rarefaction convergence: {int(iter_means.index.max())} iterations",
+             fontsize=15, fontweight="bold", color=COLORS["ink"])
+fig.savefig(FIG / "validation" / "04_downsampling_iterations.png", bbox_inches="tight")
+plt.close(fig)
 
-dumbbell_and_trbv("raw", "T1_fraction", "T2_fraction", "raw_direction_0_10_percent",
-                  FIG/"simpson_raw"/"03_candidate_dumbbell_and_trbv.png")
-raw_aff = master.get("raw_direction_0_10_percent", "").astype(str).eq("not detected") | master.get("raw_strong_contraction", False).fillna(False).astype(bool)
-enrichment_specificity("simpson_no_downsampling", FIG/"simpson_raw"/"04_enrichment_and_specificity.png", raw_aff)
-
-# Validation: retain only the useful combined validation figure if generated upstream.
-old_val = FIG/"current"/"26_validation_identity_T3_batch.png"
-if old_val.exists(): shutil.copy2(old_val, FIG/"validation"/"01_identity_T3_batch.png")
-
-# Branch concordance is useful because it shows whether conclusions survive the alternative normalization strategy.
-fig, ax = plt.subplots(figsize=(8,5.5),constrained_layout=True)
-z=master[primary_mask].copy(); tab=pd.crosstab(z.rarefied_direction_0_10_percent,z.raw_direction_0_10_percent,normalize="index")*100
-bottom=np.zeros(len(tab)); xs=np.arange(len(tab))
-for col in tab.columns:
-    vals=tab[col].to_numpy(float); ax.bar(xs,vals,bottom=bottom,label=col); bottom+=vals
-ax.set_xticks(xs,tab.index,rotation=15,ha="right"); ax.set_ylim(0,100); ax.set_ylabel("Percent of clones")
-ax.set_title("Concordance of clone direction between rarefied and Simpson raw branches"); ax.legend(fontsize=8)
-fig.savefig(FIG/"validation"/"02_branch_concordance.png",dpi=220,bbox_inches="tight"); plt.close(fig)
-
-# Figure index.
-index = FIG/"FIGURE_INDEX.txt"
-index.write_text("\n".join([
-    "FINAL FIGURE SET",
-    "",
-    "patients: one patient panel per accepted T1-T2 pair, retaining the complete and expanded Venn layer",
-    "rarefied/01_shared_and_fate.png: shared-clone abundance changes plus complete T1-expanded fate",
-    "rarefied/02_sampling_and_sensitivity.png: empirical internal null plus threshold sensitivity",
-    "rarefied/03_candidate_dumbbell_and_trbv.png: top increased stable decreased nonzero clonotypes and TRBV context",
-    "rarefied/04_enrichment_and_specificity.png: lost-versus-retained enrichment plus measles/non-measles/unknown fork",
-    "simpson_raw/01_simpson_metrics_and_fate.png: no-downsampling article-style Simpson metrics and raw fate",
-    "simpson_raw/02_shared_and_sensitivity.png: raw shared-clone changes and threshold sensitivity",
-    "simpson_raw/03_candidate_dumbbell_and_trbv.png: analogous raw candidate trajectories and TRBV context",
-    "simpson_raw/04_enrichment_and_specificity.png: analogous raw enrichment and specificity fork",
-    "validation/01_identity_T3_batch.png: identity QC, available T3 validation and GA1_003 batch sensitivity",
-    "validation/02_branch_concordance.png: robustness of clone direction across the two analytical branches",
-    "",
-    "Primary physical clone key: CDR3 nucleotide + TRBV + TRBJ",
-    "Functional/public key: CDR3 amino acid + TRBV + TRBJ",
-    "Primary expanded threshold: 0.10 percent",
-    "Sensitivity thresholds: 0.05, 0.10, 0.20 and 0.50 percent",
-    "Pair-specific rarefaction uses at least 500 iterations at the within-pair minimum depth",
-    "No-downsampling branch uses Simpson D and sqrt(Simpson D) exactly as described in PMID 37051229",
-    "Actual PubMed candidate review is intentionally performed after this run using the literature_query column in results/final/02_candidates.csv",
+(FIG / "FIGURE_INDEX.txt").write_text("\n".join([
+    "FINAL FIGURE SET", "",
+    "patients: one panel per accepted longitudinal patient comparison",
+    "rarefied/01_shared_and_fate.png: labelled shared clones and mean patient-level fate by age",
+    "rarefied/02_sampling_and_sensitivity.png: expected-versus-observed detection and complete threshold grid",
+    "rarefied/03_candidate_dumbbell_and_trbv.png: paired top-5 increased, stable and decreased blocks",
+    "rarefied/04_enrichment_and_specificity.png: patient-clustered GEE feature enrichment only",
+    "simpson_raw/01_simpson_metrics_and_fate.png: three distinct no-downsampling metrics and raw fate",
+    "simpson_raw/02_shared_and_sensitivity.png: comparison with the primary rarefaction branch",
+    "simpson_raw/03_candidate_dumbbell_and_trbv.png: observed-frequency candidate blocks and TRBV context",
+    "simpson_raw/04_enrichment_and_specificity.png: observed-frequency GEE enrichment only",
+    "validation/01_identity_T3_batch.png: identity, T3 and batch validation if available",
+    "validation/02_branch_concordance.png: rows rarefaction, columns observed frequency",
+    "validation/03_threshold_selection.png: evidence and rationale for the 0.10% threshold",
+    "validation/04_downsampling_iterations.png: Monte Carlo convergence across iterations", "",
+    "Primary clone key: CDR3 nucleotide + TRBV + TRBJ",
+    "Primary expansion threshold: 0.10 percent",
+    "Sensitivity grid: 0.05, 0.10, then 0.20 to 1.50 percent",
+    "Repeated rarefaction: at least 500 iterations at each pair-specific common depth",
+    "Final result table: results/final/candidate_clones.csv",
+    "Supporting tables: results/supplementary_tables",
 ]) + "\n", encoding="utf-8")
 
-# Remove the temporary figure staging tree.
-if (FIG/"current").exists(): shutil.rmtree(FIG/"current")
-
-# Keep results visually clean: all root CSV caches are moved to results/cache, and
-# temporary results/current is removed after curated final tables have been written.
-cache = RESULTS/"cache"; cache.mkdir(exist_ok=True)
+if (FIG / "current").exists():
+    shutil.rmtree(FIG / "current")
+cache = RESULTS / "cache"
+cache.mkdir(exist_ok=True)
 for p in list(RESULTS.glob("*.csv")):
-    dst=cache/p.name
-    if dst.exists(): dst.unlink()
-    shutil.move(str(p),str(dst))
-if CURRENT.exists(): shutil.rmtree(CURRENT)
+    dst = cache / p.name
+    if dst.exists():
+        dst.unlink()
+    shutil.move(str(p), str(dst))
+if CURRENT.exists():
+    shutil.rmtree(CURRENT)
 
 print("Curated specification reporting completed")
-print("Final tables:", FINAL)
+print("Primary result table:", FINAL / "candidate_clones.csv")
+print("Supplementary tables:", SUPP)
 print("Final figures:", FIG)

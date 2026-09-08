@@ -164,6 +164,8 @@ for patient in paired:
         if e.empty:
             threshold_rows.append({
                 **base,
+                "n_T1_expanded": 0,
+                "n_T2_expanded": int(p.T2_fraction.ge(th).sum()),
                 "retained_count_percent": np.nan,
                 "below_count_percent": np.nan,
                 "not_detected_count_percent": np.nan,
@@ -179,6 +181,8 @@ for patient in paired:
         mass_total = float(e.T1_fraction.sum())
         threshold_rows.append({
             **base,
+            "n_T1_expanded": int(len(e)),
+            "n_T2_expanded": int(p.T2_fraction.ge(th).sum()),
             "retained_count_percent": 100 * float(retained.mean()),
             "below_count_percent": 100 * float(below.mean()),
             "not_detected_count_percent": 100 * float(lost.mean()),

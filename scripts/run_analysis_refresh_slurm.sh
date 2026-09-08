@@ -62,7 +62,7 @@ for f in combined_trb_clonotypes.csv diversity_metrics.csv library_trb_clonotype
 done
 
 rm -rf \
-  results/current results/final \
+  results/current results/final results/supplementary_tables \
   figures/current figures/group figures/main figures/patients \
   figures/downsampling_pairwise figures/sensitivity_thresholds \
   figures/supplementary figures/rarefied figures/simpson_raw figures/validation
@@ -145,23 +145,28 @@ if Path('figures/current').exists():
     raise SystemExit('Temporary figures/current was not cleaned')
 
 required_tables = [
-    'results/final/01_clone_master.csv',
-    'results/final/02_candidates.csv',
-    'results/final/03_patient_summary.csv',
-    'results/final/04_threshold_sensitivity.csv',
-    'results/final/05_feature_enrichment.csv',
-    'results/final/06_validation.csv',
+    'results/final/candidate_clones.csv',
+    'results/supplementary_tables/01_full_clone_master.csv',
+    'results/supplementary_tables/02_patient_summary.csv',
+    'results/supplementary_tables/03_threshold_sensitivity.csv',
+    'results/supplementary_tables/04_feature_enrichment.csv',
+    'results/supplementary_tables/05_validation.csv',
+    'results/supplementary_tables/06_downsampling_iteration_convergence.csv',
 ]
 for f in required_tables:
     p=Path(f)
     if not p.exists() or p.stat().st_size == 0:
         raise SystemExit(f'Missing final table: {f}')
 
-master = pd.read_csv('results/final/01_clone_master.csv')
+main_tables = list(Path('results/final').glob('*.csv'))
+if [p.name for p in main_tables] != ['candidate_clones.csv']:
+    raise SystemExit(f'Expected one main specification table, found {[p.name for p in main_tables]}')
+
+master = pd.read_csv('results/supplementary_tables/01_full_clone_master.csv')
 if master.patient.nunique() != 22:
     raise SystemExit('Final clone master does not contain 22 patients')
 
-sens = pd.read_csv('results/final/04_threshold_sensitivity.csv')
+sens = pd.read_csv('results/supplementary_tables/03_threshold_sensitivity.csv')
 expected = {0.05,0.10,*[round(x/10,2) for x in range(2,16)]}
 observed = {round(float(x), 8) for x in sens.threshold_percent.dropna().unique()}
 if observed != expected:
@@ -178,6 +183,8 @@ required_figs = [
     'figures/simpson_raw/03_candidate_dumbbell_and_trbv.png',
     'figures/simpson_raw/04_enrichment_and_specificity.png',
     'figures/validation/02_branch_concordance.png',
+    'figures/validation/03_threshold_selection.png',
+    'figures/validation/04_downsampling_iterations.png',
 ]
 for f in required_figs:
     p=Path(f)
@@ -196,5 +203,6 @@ echo "Patient Venn panels: $ROOT/figures/patients"
 echo "Primary rarefied branch: $ROOT/figures/rarefied"
 echo "No-downsampling Simpson branch: $ROOT/figures/simpson_raw"
 echo "Validation: $ROOT/figures/validation"
-echo "Final tables only: $ROOT/results/final"
+echo "Specification table: $ROOT/results/final/candidate_clones.csv"
+echo "Supporting tables: $ROOT/results/supplementary_tables"
 echo "Reusable computational caches: $ROOT/results/cache"

@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib_venn import venn2
+from plot_style import COLORS, FATE_COLORS, TIME_COLORS, finish_axis
 
 warnings.filterwarnings("ignore")
 
@@ -108,6 +109,11 @@ def format_read_equivalents(value):
 
 
 def style_venn(v):
+    for patch, color in zip(getattr(v, "patches", []) or [], [COLORS["blue"], COLORS["orange"], COLORS["teal"]]):
+        if patch is not None:
+            patch.set_facecolor(color)
+            patch.set_edgecolor("white")
+            patch.set_alpha(0.72)
     for label in getattr(v, "subset_labels", []) or []:
         if label is not None:
             label.set_fontsize(8.2)
@@ -372,7 +378,7 @@ def draw_fate(ax, fate, earlier):
     ]
 
     positions = np.arange(len(categories))
-    ax.bar(positions, counts)
+    ax.bar(positions, counts, color=[FATE_COLORS[x] for x in categories], width=0.68)
     ax.set_xticks(
         positions,
         ["Retained\nexpanded", "Detected below\n0.10%", "Not detected\nlater"],
@@ -384,7 +390,7 @@ def draw_fate(ax, fate, earlier):
         fontsize=11.5,
         pad=10,
     )
-    ax.grid(axis="y", alpha=0.2)
+    finish_axis(ax, "y")
 
     total_count = sum(counts)
     ymax = max(counts) if counts else 0
@@ -478,13 +484,13 @@ def draw_shared_expanded(ax, shared, earlier, later):
         y - height / 2,
         100 * top[f"{earlier}_fraction"].to_numpy(float),
         height=height,
-        label=POINT_LABEL[earlier],
+        label=POINT_LABEL[earlier], color=TIME_COLORS["T1"],
     )
     ax.barh(
         y + height / 2,
         100 * top[f"{later}_fraction"].to_numpy(float),
         height=height,
-        label=POINT_LABEL[later],
+        label=POINT_LABEL[later], color=TIME_COLORS["T2"],
     )
 
     labels = [
@@ -501,7 +507,7 @@ def draw_shared_expanded(ax, shared, earlier, later):
         pad=10,
     )
     ax.legend(fontsize=8, loc="lower right")
-    ax.grid(axis="x", alpha=0.2)
+    finish_axis(ax, "x")
 
 
 def trbv_delta_table(patient, earlier, later):
@@ -536,8 +542,8 @@ def draw_trbv_delta(ax, trbv, earlier, later):
     y = np.arange(len(top))
     values = 100 * top["delta"].to_numpy(float)
 
-    ax.barh(y, values)
-    ax.axvline(0, color="black", linewidth=1)
+    ax.barh(y, values, color=np.where(values >= 0, COLORS["teal"], COLORS["orange"]))
+    ax.axvline(0, color=COLORS["ink"], linewidth=0.9)
     ax.set_yticks(y, top["v_gene"].astype(str).tolist())
     ax.tick_params(axis="y", labelsize=8.5)
     ax.set_xlabel(
@@ -549,7 +555,7 @@ def draw_trbv_delta(ax, trbv, earlier, later):
         fontsize=11.5,
         pad=10,
     )
-    ax.grid(axis="x", alpha=0.2)
+    finish_axis(ax, "x")
 
 
 valid = metrics[metrics["disease_status"].eq("measles")].copy()

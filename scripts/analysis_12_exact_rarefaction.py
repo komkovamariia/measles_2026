@@ -92,6 +92,7 @@ if "P_detection_if_unchanged_analytic_raw_depth" not in master.columns:
 pair_summaries = []
 threshold_rows = []
 clone_null_rows = []
+convergence_rows = []
 
 for patient in paired:
     pmeta = case[
@@ -184,11 +185,14 @@ for patient in paired:
         all1 = set(np.flatnonzero(f1 > 0))
         all2 = set(np.flatnonzero(f2 > 0))
         union = all1 | all2
-        metric_store["complete_jaccard"].append(len(all1 & all2) / len(union) if union else np.nan)
+        complete_jaccard = len(all1 & all2) / len(union) if union else np.nan
+        metric_store["complete_jaccard"].append(complete_jaccard)
 
         for th in THRESHOLDS:
             e1 = np.flatnonzero(f1 >= th)
             e2 = set(np.flatnonzero(f2 >= th))
+            threshold_store[th]["n_T1_expanded"].append(float(len(e1)))
+            threshold_store[th]["n_T2_expanded"].append(float(len(e2)))
             eu = set(e1) | e2
             threshold_store[th]["expanded_jaccard"].append(len(set(e1) & e2) / len(eu) if eu else np.nan)
             if len(e1) == 0:
@@ -197,6 +201,15 @@ for patient in paired:
                     "retained_mass_percent", "below_mass_percent", "not_detected_mass_percent",
                 ]:
                     threshold_store[th][name].append(np.nan)
+                if np.isclose(th, PRIMARY):
+                    convergence_rows.append({
+                        "patient": patient, "age_group": str(pmeta.age_group.iloc[0]),
+                        "iteration": iteration + 1, "pair_rarefaction_depth": pair_depth,
+                        "not_detected_mass_percent": np.nan,
+                        "expanded_jaccard": len(set(e1) & e2) / len(eu) if eu else np.nan,
+                        "complete_jaccard": complete_jaccard,
+                        "T1_simpson_D": s1, "T2_simpson_D": s2,
+                    })
                 continue
 
             retained_mask = np.array([i in e2 for i in e1], dtype=bool)
@@ -212,10 +225,21 @@ for patient in paired:
             if mass_total > 0:
                 threshold_store[th]["retained_mass_percent"].append(100 * float(mass[retained_mask].sum()) / mass_total)
                 threshold_store[th]["below_mass_percent"].append(100 * float(mass[below_mask].sum()) / mass_total)
-                threshold_store[th]["not_detected_mass_percent"].append(100 * float(mass[lost_mask].sum()) / mass_total)
+                not_detected_mass = 100 * float(mass[lost_mask].sum()) / mass_total
+                threshold_store[th]["not_detected_mass_percent"].append(not_detected_mass)
             else:
+                not_detected_mass = np.nan
                 for name in ["retained_mass_percent", "below_mass_percent", "not_detected_mass_percent"]:
                     threshold_store[th][name].append(np.nan)
+            if np.isclose(th, PRIMARY):
+                convergence_rows.append({
+                    "patient": patient, "age_group": str(pmeta.age_group.iloc[0]),
+                    "iteration": iteration + 1, "pair_rarefaction_depth": pair_depth,
+                    "not_detected_mass_percent": not_detected_mass,
+                    "expanded_jaccard": len(set(e1) & e2) / len(eu) if eu else np.nan,
+                    "complete_jaccard": complete_jaccard,
+                    "T1_simpson_D": s1, "T2_simpson_D": s2,
+                })
 
     summary = {
         "patient": patient,
@@ -282,9 +306,11 @@ for patient in paired:
 pair_summary = pd.DataFrame(pair_summaries)
 threshold_summary = pd.DataFrame(threshold_rows)
 clone_null = pd.DataFrame(clone_null_rows)
+convergence = pd.DataFrame(convergence_rows)
 pair_summary.to_csv(CURRENT / "pairwise_rarefaction_summary.csv", index=False)
 threshold_summary.to_csv(CURRENT / "pairwise_threshold_sensitivity.csv", index=False)
 clone_null.to_csv(CURRENT / "clone_sampling_null.csv", index=False)
+convergence.to_csv(CURRENT / "downsampling_iteration_convergence.csv", index=False)
 
 expanded_primary = master["expanded_T1_0_10_percent"].astype(str).str.lower().isin(["true", "1", "yes"])
 t2_zero = pd.to_numeric(master["T2_fraction"], errors="coerce").fillna(0).eq(0)
