@@ -89,8 +89,26 @@ for patient in paired:
 metrics = pd.DataFrame(metric_rows)
 metrics.to_csv(CURRENT / "simpson_raw_patient_metrics.csv", index=False)
 
-for c in ["T1_fraction", "T2_fraction", "T1_count", "T2_count"]:
-    master[c] = pd.to_numeric(master.get(c, np.nan), errors="coerce").fillna(0.0)
+# The nucleotide master created by analysis_10 stores counts as T1_raw_count_sum and
+# T2_raw_count_sum. Standardize those aliases here for the final presentation table.
+# Fractions are mandatory inputs; missing fractions indicate a broken upstream master
+# and must not be silently replaced by a scalar NaN.
+for c in ["T1_fraction", "T2_fraction"]:
+    if c not in master.columns:
+        raise RuntimeError(f"Required master-table column is missing: {c}")
+    master[c] = pd.to_numeric(master[c], errors="coerce").fillna(0.0)
+
+count_aliases = {
+    "T1_count": "T1_raw_count_sum",
+    "T2_count": "T2_raw_count_sum",
+}
+for target, source in count_aliases.items():
+    if target in master.columns:
+        master[target] = pd.to_numeric(master[target], errors="coerce").fillna(0.0)
+    elif source in master.columns:
+        master[target] = pd.to_numeric(master[source], errors="coerce").fillna(0.0)
+    else:
+        raise RuntimeError(f"Required count information is missing: neither {target} nor {source} exists")
 
 raw = master.copy()
 raw["raw_log2_T2_over_T1"] = np.where(
