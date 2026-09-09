@@ -163,6 +163,22 @@ main_tables = list(Path('results/final').glob('*.csv'))
 if [p.name for p in main_tables] != ['candidate_clones.csv']:
     raise SystemExit(f'Expected one main specification table, found {[p.name for p in main_tables]}')
 
+candidate = pd.read_csv('results/final/candidate_clones.csv')
+expected_candidate_columns = [
+    'Patient', 'Nucleotide clonotype ID', 'CDR3 amino acid sequence',
+    'TRBV gene', 'TRBJ gene', 'T1 frequency (%)', 'T2 frequency (%)',
+    'Fate at 0.10%', 'T1 to T2 fold contraction', 'Loss robust to sampling',
+    'Public or private', 'Control prevalence (%)', 'Known antigen',
+    'Motif cluster', 'T3 fate', 'Candidate class',
+]
+if candidate.columns.tolist() != expected_candidate_columns:
+    raise SystemExit(
+        'Candidate table does not match the concise specification schema: '
+        f'{candidate.columns.tolist()}'
+    )
+if candidate.duplicated(['Patient', 'Nucleotide clonotype ID']).any():
+    raise SystemExit('Candidate table contains duplicate patient-clonotype rows')
+
 master = pd.read_csv('results/supplementary_tables/01_full_clone_master.csv')
 if master.patient.nunique() != 22:
     raise SystemExit('Final clone master does not contain 22 patients')
