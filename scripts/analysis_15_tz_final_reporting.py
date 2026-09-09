@@ -893,8 +893,9 @@ def iteration_convergence_plot(outfile, age_group=None, cohort_label="All paired
         "Jaccard definition and interpretation\n"
         "J = |E₁ ∩ E₂| / |E₁ ∪ E₂|; E₁ and E₂ are the T1 and T2 clone sets at ≥0.10%;\n"
         "the plotted value is 100×J. 0%: no shared clones; 100%: identical sets; higher: greater overlap.\n"
-        f"Final J = {final_jaccard:.2f}%. It was selected for symmetric set comparison: T1 losses and\n"
-        "T2 gains both reduce the score; the 0.10% cutoff limits sensitivity to the rare-clone tail.",
+        "J is calculated per patient per resample; each pale point is that resample's cohort mean.\n"
+        f"Final cohort mean J = {final_jaccard:.2f}%. It was selected for symmetric set comparison:\n"
+        "T1 losses and T2 gains both reduce the score; the 0.10% cutoff limits sensitivity to the rare-clone tail.",
         ha="left", va="top", fontsize=8.0, color=COLORS["gray"], linespacing=1.35,
         bbox={"boxstyle": "round,pad=0.45", "facecolor": "#F7F9FA",
               "edgecolor": COLORS["light_gray"], "linewidth": 0.7},
