@@ -246,15 +246,29 @@ candidates = candidates.rename(columns={
     "rarefied_direction_0_10_percent": "direction_pairwise_rarefaction",
     "raw_direction_0_10_percent": "direction_observed_frequency",
     "candidate_class_rarefied": "candidate_interpretation",
+    "T1_raw_count_sum": "T1_count",
+    "T2_raw_count_sum": "T2_count",
 })
+t1_fraction = pd.to_numeric(candidates["T1_fraction"], errors="coerce")
+t2_fraction = pd.to_numeric(candidates["T2_fraction"], errors="coerce")
+observed_fold = (t1_fraction / t2_fraction).where(t2_fraction.gt(0))
+if "fold_contraction_lower_bound_if_T2_zero" in candidates:
+    lower_bound_fold = pd.to_numeric(candidates["fold_contraction_lower_bound_if_T2_zero"], errors="coerce")
+else:
+    zero_upper = (pd.to_numeric(candidates["T2_zero_upper_95_pair_depth"], errors="coerce")
+                  if "T2_zero_upper_95_pair_depth" in candidates
+                  else pd.Series(np.nan, index=candidates.index))
+    lower_bound_fold = (t1_fraction / zero_upper).where(t2_fraction.le(0) & zero_upper.gt(0))
+candidates["fold_contraction_or_lower_bound"] = observed_fold.where(observed_fold.notna(), lower_bound_fold)
+candidates["fold_contraction_is_lower_bound"] = observed_fold.isna() & lower_bound_fold.notna()
 candidate_cols = [c for c in [
-    "patient", "age_group", "cdr3nt", "cdr3aa", "TRBV", "TRBJ",
+    "patient", "age_group", "clone_id_nt", "cdr3aa", "TRBV", "TRBJ",
     "T1_count", "T2_count", "T1_fraction_percent", "T2_fraction_percent",
-    "T1_rarefied_median_percent", "T2_rarefied_median_percent",
-    "direction_pairwise_rarefaction", "direction_observed_frequency",
+    "fate_0_10_percent", "direction_pairwise_rarefaction",
+    "fold_contraction_or_lower_bound", "fold_contraction_is_lower_bound",
     "P_detection_if_unchanged_empirical", "sampling_robust_not_detected",
     "public_private", "control_prevalence", "known_antigen_final", "specificity_class",
-    "T3_fate", "candidate_interpretation",
+    "motif_cluster", "T3_fate", "candidate_interpretation",
 ] if c in candidates.columns]
 candidates[candidate_cols].sort_values(
     ["patient", "T1_fraction_percent"], ascending=[True, False]
@@ -333,14 +347,14 @@ def stacked_fate(ax, sens, title, suffix, age_groups=("child", "adult")):
     ages = list(age_groups)
     xs, bottom = np.arange(len(ages)), np.zeros(len(ages))
     specs = [
-        ("retained_mass_percent" + suffix, "Retained expanded"),
-        ("below_mass_percent" + suffix, "Detected below threshold"),
-        ("not_detected_mass_percent" + suffix, "Not detected"),
+        ("retained_mass_percent" + suffix, "Retained expanded\nT2 ≥ selected threshold", "Retained expanded"),
+        ("below_mass_percent" + suffix, "Detected below threshold\n0 < T2 < selected threshold", "Detected below threshold"),
+        ("not_detected_mass_percent" + suffix, "Not detected\nzero observed T2 reads", "Not detected"),
     ]
-    for col, label in specs:
+    for col, legend_label, color_key in specs:
         values = np.array([mean_by_age(z, col, age) for age in ages], dtype=float)
-        bars = ax.bar(xs, values, bottom=bottom, width=0.62, label=label,
-                      color=FATE_COLORS[label], edgecolor="white", linewidth=0.8)
+        bars = ax.bar(xs, values, bottom=bottom, width=0.62, label=legend_label,
+                      color=FATE_COLORS[color_key], edgecolor="white", linewidth=0.8)
         for bar, value, base in zip(bars, values, bottom):
             if np.isfinite(value) and value >= 5:
                 ax.text(bar.get_x() + bar.get_width() / 2, base + value / 2,
@@ -354,7 +368,8 @@ def stacked_fate(ax, sens, title, suffix, age_groups=("child", "adult")):
     ax.set_ylabel("Mean share of each patient's T1-expanded mass (%)")
     ax.set_title(title)
     finish_axis(ax, "y")
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=3)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=3,
+              title="Fate of clones expanded at T1")
 
 
 def shared_scatter(ax, xcol, ycol, title, dircol, age_group=None):
@@ -364,10 +379,15 @@ def shared_scatter(ax, xcol, ycol, title, dircol, age_group=None):
     y = 100 * pd.to_numeric(z[ycol], errors="coerce").to_numpy(float)
     direction = z[dircol].astype(str)
     colors = {"increased": COLORS["teal"], "stable": COLORS["blue"], "decreased": COLORS["orange"]}
+    legend_labels = {
+        "increased": "Increased: T2/T1 ≥ 2",
+        "stable": "Stable: 0.5 < T2/T1 < 2",
+        "decreased": "Decreased: T2/T1 ≤ 0.5",
+    }
     for label in ["increased", "stable", "decreased"]:
         keep = direction.eq(label).to_numpy()
         ax.scatter(x[keep], y[keep], s=25, alpha=0.56, color=colors[label],
-                   edgecolor="white", linewidth=0.35, label=label.title())
+                   edgecolor="white", linewidth=0.35, label=legend_labels[label])
     positive = np.concatenate([x[x > 0], y[y > 0]])
     lo = max(float(np.nanmin(positive)) * 0.72, 1e-4) if len(positive) else 0.01
     hi = float(np.nanmax(positive)) * 1.35 if len(positive) else 1.0
@@ -379,7 +399,7 @@ def shared_scatter(ax, xcol, ycol, title, dircol, age_group=None):
            title=title)
     finish_axis(ax, "both")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=3,
-              title="T2 relative to T1")
+              title="Direction among clones detected at both time points")
     labels = np.array([label_for_clone(r) for r in z.itertuples(index=False)], dtype=object)
     annotate_ranked_points(ax, x, y, labels, np.argsort(-np.maximum(x, y))[:10])
 
@@ -450,7 +470,7 @@ axes[0].scatter(x[~robust.to_numpy()], y[~robust.to_numpy()], s=24, alpha=0.45,
                 color=COLORS["blue"], edgecolor="white", linewidth=0.3, label="Other T1-expanded clones")
 axes[0].scatter(x[robust.to_numpy()], y[robust.to_numpy()], marker="*", s=85,
                 color=COLORS["orange"], edgecolor=COLORS["ink"], linewidth=0.35,
-                label="Sampling-robust absence at T2")
+                label="Sampling-robust T2 absence:\nexpected detection ≥0.99, observed 0")
 axes[0].plot([0, 1], [0, 1], linestyle="--", color=COLORS["gray"], linewidth=1)
 axes[0].set(xlim=(0, 1.01), ylim=(0, 1.01),
             xlabel="Expected detection probability if T1 abundance were unchanged",
@@ -523,7 +543,7 @@ def dumbbell_and_trbv(branch, xcol, ycol, dircol, outfile, age_group=None):
             if start < len(top):
                 axes[0].axhspan(start - 0.5, min(start + 4.5, len(top) - 0.5),
                                 color=color, alpha=0.045, zorder=0)
-        axes[0].legend(loc="lower right")
+        axes[0].legend(loc="lower right", title="Paired time points")
         finish_axis(axes[0], "x")
 
     decreased = paired[paired[dircol].astype(str).eq("decreased")].copy()
@@ -540,6 +560,13 @@ def dumbbell_and_trbv(branch, xcol, ycol, dircol, outfile, age_group=None):
     panel_label(axes[1], "B")
     name = "Repeated rarefaction" if branch == "rarefied" else "Observed frequencies without downsampling"
     fig.suptitle(f"Candidate trajectories: {name}", fontsize=15, fontweight="bold", color=COLORS["ink"])
+    fig.text(
+        0.5, -0.01,
+        "Direction definitions: increased = T2/T1 ≥ 2; stable = 0.5 < T2/T1 < 2; "
+        "decreased = T2/T1 ≤ 0.5 but detected at T2. Not-detected clones have zero T2 reads "
+        "and are not shown because a T2 dumbbell endpoint does not exist.",
+        ha="center", va="top", fontsize=8.0, color=COLORS["gray"], wrap=True,
+    )
     fig.savefig(outfile, bbox_inches="tight")
     plt.close(fig)
 
@@ -551,12 +578,13 @@ dumbbell_and_trbv(
 
 
 def enrichment_plot(branch, outfile, enrichment_frame=None, cohort_label="All paired patients"):
-    fig, ax = plt.subplots(figsize=(9.8, 6.4), constrained_layout=True)
     source = enrichment if enrichment_frame is None else enrichment_frame
     e = (source[source.branch.astype(str).eq(branch)].copy()
          if not source.empty and "branch" in source.columns else pd.DataFrame())
     if not e.empty:
         e = e[pd.to_numeric(e.get("fdr", np.nan), errors="coerce").le(0.05)].copy()
+    fig, ax = plt.subplots(figsize=(9.8, 6.4) if not e.empty else (9.0, 3.5),
+                           constrained_layout=True)
     if e.empty:
         ax.text(0.5, 0.54, "No TRBV, TRBJ or CDR3 3-mer feature passes BH FDR ≤ 0.05",
                 ha="center", va="center", fontsize=11, transform=ax.transAxes)
@@ -580,11 +608,13 @@ def enrichment_plot(branch, outfile, enrichment_frame=None, cohort_label="All pa
     method = ("Patient-clustered GEE after repeated rarefaction"
               if branch == "pairwise_rarefied"
               else "Patient-clustered GEE using observed frequencies")
-    ax.set_title(f"Which sequence features differ between clone fates: {cohort_label}\n{method}")
+    ax.set_title(f"Sequence-feature enrichment by clone fate: {cohort_label}\n{method}")
     fig.text(
         0.5, 0.01,
-        "How to read: orange points to the right of 0 are more common in contracted/lost clones; "
-        "teal points to the left are more common in retained clones. Dot = adjusted estimate; "
+        "Definitions: contracted/lost = at least 5-fold decrease or T2 absence with expected detection "
+        "probability ≥ 0.99; retained = detected at T2 at or above 0.10%. "
+        "Orange points to the right of 0 favor contracted/lost; teal points to the left favor retained. "
+        "Dot = adjusted estimate; "
         "line = 95% CI. Model groups clones from the same patient, adjusts for T1 abundance, "
         "and displays only BH FDR ≤ 0.05.",
         ha="center", va="bottom", fontsize=8.1, color=COLORS["gray"], wrap=True,
@@ -759,7 +789,8 @@ def threshold_selection_plot(outfile, age_group=None, cohort_label="All paired p
     fig.text(0.5, -0.015,
              "0.10% is the pre-specified balance: it avoids the sampling-sensitive 0.05% edge "
              "and retains more candidates than stricter cutoffs. Overlapping lines mean the two "
-             "methods give nearly the same estimate; a dashed line never means 'not calculated'.",
+             "methods give nearly the same estimate. Line style identifies the analytical branch; "
+             "missing eligibility is explicitly marked n=0.",
              ha="center", va="top", fontsize=8.4)
     fig.savefig(outfile, bbox_inches="tight")
     plt.close(fig)
@@ -777,8 +808,8 @@ def iteration_convergence_plot(outfile, age_group=None, cohort_label="All paired
         expanded_jaccard=("expanded_jaccard", "mean"),
     ).sort_index()
     series = [
-        ("T1-expanded mass not detected at T2", iter_means["not_detected_mass_percent"], COLORS["orange"]),
-        ("Expanded-set Jaccard similarity", 100 * iter_means["expanded_jaccard"], COLORS["teal"]),
+        ("Primary result stability\nT1-expanded mass not detected at T2", iter_means["not_detected_mass_percent"], COLORS["orange"]),
+        ("Set-overlap stability\nExpanded-clone Jaccard", 100 * iter_means["expanded_jaccard"], COLORS["teal"]),
     ]
     fig, axes = plt.subplots(1, 2, figsize=(14.0, 5.5), constrained_layout=True)
     for ax, (title, values, color) in zip(axes, series):
@@ -795,8 +826,10 @@ def iteration_convergence_plot(outfile, age_group=None, cohort_label="All paired
         ax.plot(running_mean.index, running_mean.values, color=color, linewidth=1.8,
                 label="Running mean through iteration k")
         final_value = float(running_mean.iloc[-1])
+        final_half_width = float(ci.iloc[-1])
         ax.axhline(final_value, color=COLORS["ink"], linestyle=":", linewidth=1)
-        ax.text(0.98, 0.05, f"Final {len(values)}-iteration mean: {final_value:.2f}%",
+        ax.text(0.98, 0.05,
+                f"Final mean: {final_value:.2f}%\nMonte Carlo 95% half-width: ±{final_half_width:.2f} pp",
                 transform=ax.transAxes, ha="right", va="bottom", fontsize=8)
         ax.set(xlabel="Number of complete rarefaction iterations accumulated",
                ylabel="Cohort estimate (%)", title=title)
@@ -804,13 +837,16 @@ def iteration_convergence_plot(outfile, age_group=None, cohort_label="All paired
         ax.legend(loc="best", fontsize=7.6)
     panel_label(axes[0], "A")
     panel_label(axes[1], "B")
-    fig.suptitle(f"Does repeated rarefaction converge: {cohort_label}",
+    fig.suptitle(f"Monte Carlo convergence of pair-specific rarefaction: {cohort_label}",
                  fontsize=15, fontweight="bold", color=COLORS["ink"])
-    fig.text(0.5, -0.015,
-             "One iteration samples every accepted T1 and T2 library without replacement to its "
-             "patient-pair common depth, then recomputes clone frequencies, fates and Jaccard. "
-             "Faint dots are individual iterations; the solid line and band show convergence.",
-             ha="center", va="top", fontsize=8.3)
+    fig.text(
+        0.5, -0.015,
+        "Each repeat draws a new equal-depth subset, so rare/near-threshold clones may change "
+        "frequency, detection and fate. Panel A checks the abundance-weighted biological result. "
+        "Panel B checks expanded-set overlap: Jaccard = shared/(T1 ∪ T2), chosen because it penalizes "
+        "both lost T1 clones and new T2 clones. Five hundred repeats stabilize medians and 95% intervals.",
+        ha="center", va="top", fontsize=8.1, color=COLORS["gray"], wrap=True,
+    )
     fig.savefig(outfile, bbox_inches="tight")
     plt.close(fig)
 
@@ -832,7 +868,7 @@ def sampling_and_sensitivity_plot(outfile, age_group=None, cohort_label="All pai
                     label="Other T1-expanded clones")
     axes[0].scatter(x[robust.to_numpy()], y[robust.to_numpy()], marker="*", s=85,
                     color=COLORS["orange"], edgecolor=COLORS["ink"], linewidth=0.35,
-                    label="Sampling-robust absence at T2")
+                    label="Sampling-robust T2 absence:\nexpected detection ≥0.99, observed 0")
     axes[0].plot([0, 1], [0, 1], linestyle="--", color=COLORS["gray"], linewidth=1)
     axes[0].set(xlim=(0, 1.01), ylim=(0, 1.01),
                 xlabel="Expected detection if the T1 clone stayed equally abundant",
@@ -887,12 +923,19 @@ def branch_comparison_plot(outfile, age_group=None, cohort_label="All paired pat
     sens = threshold_final if age_group is None else threshold_final[threshold_final.age_group.eq(age_group)]
     plot_threshold_lines(axes[1], sens,
                          ["pairwise_rarefied", "simpson_no_downsampling"], age_groups=())
-    axes[1].set_title("Same outcome calculated two ways\nFilled circle/solid: rarefaction; hollow square/dashed: observed")
+    axes[1].set_title("Threshold sensitivity by analytical branch\nFilled circle/solid: rarefaction; hollow square/dashed: observed")
     axes[1].legend(loc="best", fontsize=7.6)
     panel_label(axes[0], "A")
     panel_label(axes[1], "B")
     fig.suptitle(f"Rarefaction versus observed-frequency branch: {cohort_label}",
                  fontsize=15, fontweight="bold", color=COLORS["ink"])
+    fig.text(
+        0.5, -0.01,
+        "Direction classes use the same fold-change boundaries: increased = T2/T1 ≥ 2; stable = "
+        "0.5 < T2/T1 < 2; decreased = T2/T1 ≤ 0.5. Not detected means median rarefied T2 "
+        "fraction is zero in the primary branch and zero observed T2 reads in the complementary branch.",
+        ha="center", va="top", fontsize=8.0, color=COLORS["gray"], wrap=True,
+    )
     fig.savefig(outfile, bbox_inches="tight")
     plt.close(fig)
 
@@ -920,6 +963,13 @@ def concordance_plot(outfile, age_group=None, cohort_label="All paired patients"
     ax.set_ylabel("Repeated-rarefaction direction class")
     ax.set_title(f"Direction agreement at 0.10%: {cohort_label}\nRows: rarefaction; columns: observed frequencies")
     fig.colorbar(im, ax=ax, shrink=0.8, label="Percentage within rarefaction row (%)")
+    fig.text(
+        0.5, -0.01,
+        "Increased: T2/T1 ≥ 2. Stable: 0.5 < T2/T1 < 2. Decreased: T2/T1 ≤ 0.5 "
+        "with the clone still detected. Not detected: median rarefied T2 fraction is zero in the "
+        "primary branch; zero observed T2 reads in the observed-frequency branch.",
+        ha="center", va="top", fontsize=8.0, color=COLORS["gray"], wrap=True,
+    )
     fig.savefig(outfile, bbox_inches="tight")
     plt.close(fig)
 

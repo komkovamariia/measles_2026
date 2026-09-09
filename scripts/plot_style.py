@@ -76,32 +76,38 @@ def panel_label(ax, label: str) -> None:
 
 
 def annotate_ranked_points(ax, x, y, labels, indices, color=None) -> None:
-    """Label up to ten points in two fixed columns with non-overlapping leaders."""
+    """Number up to ten points and place the full key below, outside data ink."""
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
     labels = np.asarray(labels, dtype=object)
     indices = list(indices)[:10]
     if not indices:
         return
-    left = indices[::2]
-    right = indices[1::2]
-    for side, chosen in [("left", left), ("right", right)]:
-        if not chosen:
-            continue
-        y_positions = np.linspace(0.91, 0.17, len(chosen))
-        x_text = 0.02 if side == "left" else 0.98
-        ha = "left" if side == "left" else "right"
-        for idx, y_text in zip(chosen, y_positions):
-            ax.annotate(
-                str(labels[idx]), xy=(x[idx], y[idx]), xycoords="data",
-                xytext=(x_text, y_text), textcoords="axes fraction",
-                ha=ha, va="center", fontsize=7.1, color=COLORS["ink"],
-                arrowprops={"arrowstyle": "-", "color": color or COLORS["gray"],
-                            "lw": 0.7, "alpha": 0.85},
-                bbox={"boxstyle": "round,pad=0.18", "facecolor": "white",
-                      "edgecolor": COLORS["light_gray"], "alpha": 0.92},
-                zorder=5,
-            )
+    offsets = [(10, 14), (12, -15), (-12, 14), (-14, -15), (22, 3),
+               (-22, 3), (4, 24), (4, -24), (-8, 24), (-8, -24)]
+    keyed = []
+    for rank, (idx, offset) in enumerate(zip(indices, offsets), start=1):
+        ax.annotate(
+            str(rank), xy=(x[idx], y[idx]), xycoords="data",
+            xytext=offset, textcoords="offset points",
+            ha="center", va="center", fontsize=6.7, fontweight="bold",
+            color=COLORS["ink"],
+            bbox={"boxstyle": "circle,pad=0.16", "facecolor": "white",
+                  "edgecolor": color or COLORS["gray"], "linewidth": 0.7,
+                  "alpha": 0.96},
+            arrowprops={"arrowstyle": "-", "color": color or COLORS["gray"],
+                        "linewidth": 0.55, "alpha": 0.75},
+            zorder=6,
+        )
+        keyed.append(f"{rank}. {labels[idx]}")
+    midpoint = (len(keyed) + 1) // 2
+    ax.text(0.00, -0.30, "Labelled clones\n" + "\n".join(keyed[:midpoint]),
+            transform=ax.transAxes, ha="left", va="top", fontsize=6.7,
+            color=COLORS["ink"], clip_on=False)
+    if midpoint < len(keyed):
+        ax.text(0.52, -0.30, "\n" + "\n".join(keyed[midpoint:]),
+                transform=ax.transAxes, ha="left", va="top", fontsize=6.7,
+                color=COLORS["ink"], clip_on=False)
 
 
 configure_publication_style()

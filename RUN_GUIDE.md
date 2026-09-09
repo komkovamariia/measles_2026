@@ -84,6 +84,20 @@ pair_depth_i = minimum productive-read depth among all accepted T1 and T2 librar
 
 Every contributing library is sampled without replacement to `pair_depth_i` using multivariate hypergeometric sampling.
 
+Each iteration draws a new random subset of reads. Therefore low-frequency and near-threshold clones can change their sampled count, normalized frequency, detected/not-detected status, expanded status, fate category and membership in the T1/T2 overlap. The underlying input libraries do not change.
+
+The repetition is needed because one downsample is an arbitrary random realization. Five hundred iterations are sufficient here to estimate stable patient medians and 2.5–97.5% sampling intervals while keeping the run practical. The fixed seed makes the full calculation reproducible; 1,000 iterations remain available as a final sensitivity run.
+
+Expanded-set Jaccard is:
+
+```text
+number of expanded clones shared by T1 and T2
+------------------------------------------------
+number of expanded clones present in T1 or T2
+```
+
+Jaccard is used because the comparison concerns two clone sets, not only their sizes. It is symmetric, bounded between 0 and 1, and decreases both when a T1-expanded clone is lost and when a new T2-expanded clone appears. The primary 0.10% expanded Jaccard is less dominated by the unstable rare-clone tail than complete-repertoire Jaccard. Jaccard does not use abundance inside the selected set, so the convergence figure also retains T1 mass not detected at T2 as the abundance-weighted biological result.
+
 Default:
 
 ```text
@@ -100,6 +114,17 @@ export MEASLES_RAREFACTION_ITERATIONS=1000
 The internal T1 null calculates exact same-depth `P_detection_if_unchanged` after each rarefied T1 draw and averages these probabilities across iterations. It does not add a second Bernoulli simulation. A T1-expanded clone absent from real T2 despite very high expected detectability is a sampling-robust loss candidate.
 
 No pseudocount is introduced for T2 zero values.
+
+Clone direction labels used throughout the figures are:
+
+```text
+increased     T2/T1 >= 2
+stable        0.5 < T2/T1 < 2
+decreased     T2/T1 <= 0.5 and the clone is still detected at T2
+not detected  zero observed T2 reads
+```
+
+The enrichment comparison uses a narrower endpoint. `contracted/lost` means either at least five-fold contraction or zero T2 reads despite same-depth expected detection probability at least 0.99. `retained` means detected at T2 at or above the selected 0.10% threshold.
 
 ## Presentation logic
 

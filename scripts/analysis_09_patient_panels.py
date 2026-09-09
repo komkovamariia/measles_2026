@@ -381,7 +381,9 @@ def draw_fate(ax, fate, earlier):
     ax.bar(positions, counts, color=[FATE_COLORS[x] for x in categories], width=0.68)
     ax.set_xticks(
         positions,
-        ["Retained\nexpanded", "Detected below\n0.10%", "Not detected\nlater"],
+        ["Retained expanded\nlater ≥ 0.10%",
+         "Detected below threshold\n0 < later < 0.10%",
+         "Not detected later\nzero observed reads"],
     )
     ax.set_ylabel(f"Number of expanded {earlier} clonotypes")
     ax.set_title(

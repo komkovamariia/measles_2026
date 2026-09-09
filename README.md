@@ -2,6 +2,8 @@
 
 This repository contains the paired TRB repertoire workflow for the measles cohort.
 
+Coverage of the original analysis specification, remaining data limitations and the two recommended non-duplicative additions are recorded in `TZ_COVERAGE.md`.
+
 ## Cohort contract
 
 - metadata: `config/analysis_metadata.csv`
@@ -80,6 +82,10 @@ pair depth = minimum productive-read depth among all accepted T1 and T2 librarie
 
 Each contributing library is sampled without replacement to that pair-specific depth. The default is 500 iterations and at least 500 are required.
 
+Between iterations only the random equal-depth subset changes. This can change the sampled frequency, detection and threshold classification of rare or near-threshold clones. Repeating 500 times replaces a single arbitrary draw with stable medians and 95% sampling intervals; seed 1031 makes the result reproducible.
+
+Expanded-set Jaccard is the number of expanded clones shared by T1 and T2 divided by the number present in either time point. It is included because it symmetrically captures both disappearance of T1 clones and appearance of new T2 clones. The accompanying not-detected T1 mass remains the abundance-weighted biological endpoint.
+
 For БА1_071 the two T2 libraries are rarefied separately, converted to frequencies and only then averaged.
 
 An internal T1 null produces `P_detection_if_unchanged`: the exact same-depth detection probability calculated after each T1 rarefaction and averaged across iterations. A high-frequency T1 clone that should nearly always be observed at the available depth but is absent from real T2 is flagged as a sampling-robust loss candidate.
@@ -110,10 +116,10 @@ The two branches answer different questions. Repeated rarefaction is primary for
 
 Primary T1-expanded clones are described as:
 
-- increased: candidate developing or persisting measles response
-- stable: stable circulating clone, potentially pre-existing memory or ongoing immune surveillance
-- decreased: either normal contraction of a measles response or possible loss of pre-existing memory
-- not detected: strongest disappearance category, interpreted together with the sampling null
+- increased: detected at T2 with T2/T1 at least 2; candidate developing or persisting measles response
+- stable: detected at T2 with T2/T1 between 0.5 and 2; persistent circulating clone, potentially pre-existing memory or ongoing immune surveillance
+- decreased: detected at T2 with T2/T1 at most 0.5; either normal contraction of a measles response or possible loss of pre-existing memory
+- not detected: zero observed T2 reads; strongest disappearance category, interpreted together with the same-depth sampling null
 
 The specificity fork is:
 
@@ -135,6 +141,16 @@ The finished run deliberately publishes a small final tree:
 
 ```text
 figures/
+  adults/
+    patients/
+    rarefied/
+    simpson_raw/
+    validation/
+  children/
+    patients/
+    rarefied/
+    simpson_raw/
+    validation/
   patients/
   rarefied/
   simpson_raw/

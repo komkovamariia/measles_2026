@@ -5,14 +5,22 @@ For each patient, every accepted T1 and T2 sequencing library is downsampled
 without replacement to that patient's own common depth:
     pair_depth = minimum productive-read depth among libraries contributing to T1 or T2.
 
-The procedure is repeated at least 500 times. Biological replicate libraries are
-rarefied separately, converted to frequencies, then averaged at the clinical point.
+The procedure is repeated at least 500 times. Each repeat draws a different random
+subset of reads, so rare and near-threshold clones can change detection, frequency,
+expanded status, fate, lost-mass contribution and Jaccard membership. Repetition
+summarizes this sampling uncertainty instead of relying on one arbitrary draw.
+Biological replicate libraries are rarefied separately, converted to frequencies,
+then averaged at the clinical point.
 
-For every T1 clonotype the script also estimates an empirical internal null.
-After each T1 rarefaction, clone detection in a same-depth synthetic T2 is simulated
-as the exact Bernoulli detection event implied by the rarefied T1 frequency and the
-T2 sampling effort. This is equivalent for the detection event to generating full
-multinomial pseudo-libraries, but avoids creating huge unnecessary count matrices.
+For every T1 clonotype the script also calculates a same-depth internal null.
+After each T1 rarefaction, the exact probability of detecting the clone at the T2
+sampling effort is calculated and then averaged across T1 rarefactions. No extra
+Bernoulli simulation is added.
+
+Expanded-set Jaccard is intersection divided by union for the T1 and T2 expanded
+clone sets. It is used because it is symmetric, bounded from zero to one and
+penalizes both loss of T1 expanded clones and appearance of new T2 expanded clones.
+The primary 0.10-percent version avoids domination by the unstable rare-clone tail.
 
 Read downsampling controls sequencing depth only. It cannot remove PCR amplification
 bias because these bulk genomic DNA libraries do not contain UMI information.
