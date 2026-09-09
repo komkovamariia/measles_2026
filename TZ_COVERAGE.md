@@ -6,7 +6,7 @@ This checklist maps the 7 September 2026 specification to the reproducible pipel
 |---|---|---|
 | One row per physical T1 clone using CDR3 nucleotide, TRBV and TRBJ | Complete | `paired_T1_clone_master_nt.csv`; curated candidates in `results/final/candidate_clones.csv` |
 | Functional and public clone identity using CDR3 amino acid, TRBV and TRBJ | Complete | Public/private status and control prevalence are calculated at the amino-acid key |
-| T1 and T2 counts, frequencies, age and sequencing source | Complete | Candidate table contains counts, percentages and age; full source/batch fields remain in `supplementary_tables/01_full_clone_master.csv` |
+| T1 and T2 counts, frequencies, age and sequencing source | Complete | The concise candidate table contains the T1 and T2 percentages requested in its example schema. Counts, age and source/batch fields remain in `supplementary_tables/01_full_clone_master.csv` rather than duplicating the master table. |
 | Primary T1-expanded pool at 0.10% | Complete | The same pre-specified pool is used in both analytical branches |
 | Threshold sensitivity | Complete and extended | 0.05%, 0.10% and every 0.10 percentage point from 0.20% through 1.50% |
 | Fate as retained expanded, detected below threshold or not detected | Complete | Both clone counts and original T1 expanded mass are summarized |
