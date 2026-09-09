@@ -262,17 +262,67 @@ else:
     lower_bound_fold = (t1_fraction / zero_upper).where(t2_fraction.le(0) & zero_upper.gt(0))
 candidates["fold_contraction_or_lower_bound"] = observed_fold.where(observed_fold.notna(), lower_bound_fold)
 candidates["fold_contraction_is_lower_bound"] = observed_fold.isna() & lower_bound_fold.notna()
-candidate_cols = [c for c in [
-    "patient", "age_group", "clone_id_nt", "cdr3aa", "TRBV", "TRBJ",
-    "T1_count", "T2_count", "T1_fraction_percent", "T2_fraction_percent",
-    "fate_0_10_percent", "direction_pairwise_rarefaction",
-    "fold_contraction_or_lower_bound", "fold_contraction_is_lower_bound",
-    "P_detection_if_unchanged_empirical", "sampling_robust_not_detected",
-    "public_private", "control_prevalence", "known_antigen_final", "specificity_class",
-    "motif_cluster", "T3_fate", "candidate_interpretation",
-] if c in candidates.columns]
-candidates[candidate_cols].sort_values(
-    ["patient", "T1_fraction_percent"], ascending=[True, False]
+
+# The final candidate table follows the concise schema shown in the specification.
+# Calculation-only fields remain available in the supplementary full clone master.
+def as_boolean(value):
+    if pd.isna(value):
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return bool(value)
+
+
+def human_fold_contraction(value, is_lower_bound):
+    if pd.isna(value):
+        return ""
+    rendered = f"{float(value):.7g}"
+    return f"≥{rendered}" if as_boolean(is_lower_bound) else rendered
+
+
+candidate_export = pd.DataFrame({
+    "Patient": candidates["patient"].astype(str),
+    "Nucleotide clonotype ID": candidates["clone_id_nt"].astype(str),
+    "CDR3 amino acid sequence": candidates["cdr3aa"].astype(str),
+    "TRBV gene": candidates["TRBV"].astype(str),
+    "TRBJ gene": candidates["TRBJ"].astype(str),
+    "T1 frequency (%)": pd.to_numeric(candidates["T1_fraction_percent"], errors="coerce"),
+    "T2 frequency (%)": pd.to_numeric(candidates["T2_fraction_percent"], errors="coerce"),
+    "Fate at 0.10%": candidates["fate_0_10_percent"].replace({
+        "not detected": "Not detected at T2",
+        "retained expanded": "Retained at or above 0.10% in T2",
+        "detected below 0.10 percent": "Detected below 0.10% in T2",
+    }),
+    "T1 to T2 fold contraction": [
+        human_fold_contraction(value, is_lower_bound)
+        for value, is_lower_bound in zip(
+            candidates["fold_contraction_or_lower_bound"],
+            candidates["fold_contraction_is_lower_bound"],
+        )
+    ],
+    "Loss robust to sampling": candidates["sampling_robust_not_detected"].map(
+        lambda value: "Yes" if as_boolean(value) else "No"
+    ),
+    "Public or private": candidates["public_private"].astype(str).str.capitalize(),
+    "Control prevalence (%)": 100 * pd.to_numeric(candidates["control_prevalence"], errors="coerce"),
+    "Known antigen": candidates["known_antigen_final"],
+    "Motif cluster": candidates["motif_cluster"].astype(str),
+    "T3 fate": candidates["T3_fate"].replace({
+        "not available": "T3 not available",
+        "expanded at T3": "At or above 0.10% at T3",
+        "detected below 0.10 percent at T3": "Detected below 0.10% at T3",
+        "not detected at T3": "Not detected at T3",
+    }),
+    "Candidate class": candidates["candidate_interpretation"].replace({
+        "contracted clone with unknown specificity": "Contracted clone with unknown antigen specificity",
+        "stable circulating clone": "Stable circulating clone",
+        "candidate developing or persisting measles response": (
+            "Candidate for a developing or persistent measles response"
+        ),
+    }),
+})
+candidate_export.sort_values(
+    ["Patient", "T1 frequency (%)"], ascending=[True, False]
 ).to_csv(FINAL / "candidate_clones.csv", index=False)
 
 # Technical and supporting outputs are kept out of the main results folder.
