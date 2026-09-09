@@ -19,6 +19,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import statsmodels.api as sm
 from statsmodels.stats.multitest import multipletests
 from plot_style import (
@@ -583,8 +584,8 @@ def enrichment_plot(branch, outfile, enrichment_frame=None, cohort_label="All pa
          if not source.empty and "branch" in source.columns else pd.DataFrame())
     if not e.empty:
         e = e[pd.to_numeric(e.get("fdr", np.nan), errors="coerce").le(0.05)].copy()
-    fig, ax = plt.subplots(figsize=(9.8, 6.4) if not e.empty else (9.0, 3.5),
-                           constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(10.8, 7.4) if not e.empty else (10.0, 5.0))
+    fig.subplots_adjust(left=0.22, right=0.98, top=0.78, bottom=0.30)
     if e.empty:
         ax.text(0.5, 0.54, "No TRBV, TRBJ or CDR3 3-mer feature passes BH FDR ≤ 0.05",
                 ha="center", va="center", fontsize=11, transform=ax.transAxes)
@@ -602,31 +603,65 @@ def enrichment_plot(branch, outfile, enrichment_frame=None, cohort_label="All pa
         ax.scatter(coef, y_pos, c=np.where(coef >= 0, COLORS["orange"], COLORS["teal"]),
                    s=42, zorder=3)
         ax.axvline(0, color=COLORS["ink"], linewidth=0.9)
-        ax.set_yticks(y_pos, [f'{a}: {b}' for a, b in zip(e.feature_type, e.feature)])
-        ax.set_xlabel("Model estimate: retained ← 0 → contracted/lost")
+        feature_names = {
+            "CDR3_3mer": "CDR3 aa 3-mer",
+            "TRBV": "TRBV gene",
+            "TRBJ": "TRBJ gene",
+        }
+        ax.set_yticks(
+            y_pos,
+            [f'{feature_names.get(a, a)}: {b}' for a, b in zip(e.feature_type, e.feature)],
+        )
+        ax.set_xlabel("Adjusted log odds ratio for contracted/lost fate")
         finish_axis(ax, "x")
+        legend_handles = [
+            Line2D([0], [0], marker="o", color="none", markerfacecolor=COLORS["orange"],
+                   markeredgecolor="none", markersize=7,
+                   label="Enriched among contracted/lost clones"),
+            Line2D([0], [0], marker="o", color="none", markerfacecolor=COLORS["teal"],
+                   markeredgecolor="none", markersize=7,
+                   label="Enriched among retained clones"),
+            Line2D([0], [0], color=COLORS["gray"], marker="o", markerfacecolor="white",
+                   markeredgecolor=COLORS["gray"], linewidth=1.2, markersize=5,
+                   label="Adjusted log odds ratio and 95% CI"),
+        ]
+        ax.legend(handles=legend_handles, loc="lower center", bbox_to_anchor=(0.5, 1.015),
+                  ncol=3, fontsize=8.0, columnspacing=1.4, handlelength=2.0)
     method = ("Patient-clustered GEE after repeated rarefaction"
               if branch == "pairwise_rarefied"
               else "Patient-clustered GEE using observed frequencies")
-    ax.set_title(f"Sequence-feature enrichment by clone fate: {cohort_label}\n{method}")
+    outcome_definition = (
+        "Contracted/lost: ≥5-fold T1-to-T2 decrease, or T2 absence despite ≥0.99 expected "
+        "detection if unchanged."
+        if branch == "pairwise_rarefied"
+        else "Contracted/lost: ≥5-fold T1-to-T2 decrease, or zero observed T2 reads."
+    )
+    fig.suptitle(f"Sequence-feature enrichment by clone fate: {cohort_label}\n{method}",
+                 y=0.975, fontsize=14.5, fontweight="bold", color=COLORS["ink"])
     fig.text(
-        0.5, 0.01,
-        "Definitions: contracted/lost = at least 5-fold decrease or T2 absence with expected detection "
-        "probability ≥ 0.99; retained = detected at T2 at or above 0.10%. "
-        "Orange points to the right of 0 favor contracted/lost; teal points to the left favor retained. "
-        "Dot = adjusted estimate; "
-        "line = 95% CI. Model groups clones from the same patient, adjusts for T1 abundance, "
-        "and displays only BH FDR ≤ 0.05.",
-        ha="center", va="bottom", fontsize=8.1, color=COLORS["gray"], wrap=True,
+        0.22, 0.205,
+        f"Outcome groups. {outcome_definition} Retained: detected at T2 at ≥0.10%.",
+        ha="left", va="top", fontsize=8.0, color=COLORS["ink"],
+    )
+    fig.text(
+        0.22, 0.145,
+        "CDR3 motifs. Each CDR3β amino-acid sequence was split into all overlapping 3-aa windows "
+        "(e.g. CASSL → CAS, ASS, SSL); a motif was counted once per clonotype.",
+        ha="left", va="top", fontsize=8.0, color=COLORS["ink"],
+    )
+    fig.text(
+        0.22, 0.085,
+        "Model. Features present in ≥5 clones from ≥3 patients were tested by binomial GEE, "
+        "clustered by patient and adjusted for log10(T1 clone frequency). BH correction was applied "
+        "within each feature family; up to 12 features with FDR ≤0.05 and the largest absolute "
+        "coefficients are shown.",
+        ha="left", va="top", fontsize=8.0, color=COLORS["gray"],
     )
     fig.savefig(outfile, bbox_inches="tight")
     plt.close(fig)
 
 
 enrichment_plot("pairwise_rarefied", FIG / "rarefied" / "04_enrichment_and_specificity.png")
-
-from matplotlib.lines import Line2D
-
 
 def simpson_and_fate(outfile, age_groups=("child", "adult"), cohort_label="All paired patients"):
     """Keep only the non-redundant Simpson D panel plus clone fate."""
@@ -807,45 +842,62 @@ def iteration_convergence_plot(outfile, age_group=None, cohort_label="All paired
         not_detected_mass_percent=("not_detected_mass_percent", "mean"),
         expanded_jaccard=("expanded_jaccard", "mean"),
     ).sort_index()
+    jaccard_percent = 100 * iter_means["expanded_jaccard"]
     series = [
         ("Primary result stability\nT1-expanded mass not detected at T2", iter_means["not_detected_mass_percent"], COLORS["orange"]),
-        ("Set-overlap stability\nExpanded-clone Jaccard", 100 * iter_means["expanded_jaccard"], COLORS["teal"]),
+        ("Set-overlap stability\nExpanded-clone Jaccard at the 0.10% threshold", jaccard_percent, COLORS["teal"]),
     ]
-    fig, axes = plt.subplots(1, 2, figsize=(14.0, 5.5), constrained_layout=True)
+    fig, axes = plt.subplots(1, 2, figsize=(14.8, 7.1))
+    fig.subplots_adjust(left=0.07, right=0.985, top=0.80, bottom=0.33, wspace=0.14)
     for ax, (title, values, color) in zip(axes, series):
         running_mean = values.expanding(min_periods=1).mean()
         n = pd.Series(np.arange(1, len(values) + 1), index=values.index, dtype=float)
         mc_se = values.expanding(min_periods=2).std() / np.sqrt(n)
         ci = (1.96 * mc_se).fillna(0.0)
         ax.scatter(values.index, values.values, s=8, color=color, alpha=0.12,
-                   label="One complete resampling iteration")
+                   label="Single equal-depth resample")
         ax.fill_between(values.index.to_numpy(float),
                         (running_mean - ci).to_numpy(float),
                         (running_mean + ci).to_numpy(float),
                         color=color, alpha=0.16, label="Running 95% Monte Carlo CI")
         ax.plot(running_mean.index, running_mean.values, color=color, linewidth=1.8,
-                label="Running mean through iteration k")
+                label="Running mean after k iterations")
         final_value = float(running_mean.iloc[-1])
         final_half_width = float(ci.iloc[-1])
         ax.axhline(final_value, color=COLORS["ink"], linestyle=":", linewidth=1)
         ax.text(0.98, 0.05,
-                f"Final mean: {final_value:.2f}%\nMonte Carlo 95% half-width: ±{final_half_width:.2f} pp",
+                f"Final mean: {final_value:.2f}%\n95% Monte Carlo half-width: "
+                f"±{final_half_width:.2f} percentage points",
                 transform=ax.transAxes, ha="right", va="bottom", fontsize=8)
-        ax.set(xlabel="Number of complete rarefaction iterations accumulated",
+        ax.set(xlabel="Number of rarefaction iterations accumulated",
                ylabel="Cohort estimate (%)", title=title)
         finish_axis(ax, "both")
         ax.legend(loc="best", fontsize=7.6)
     panel_label(axes[0], "A")
     panel_label(axes[1], "B")
     fig.suptitle(f"Monte Carlo convergence of pair-specific rarefaction: {cohort_label}",
-                 fontsize=15, fontweight="bold", color=COLORS["ink"])
+                 y=0.965, fontsize=15, fontweight="bold", color=COLORS["ink"])
+    final_jaccard = float(jaccard_percent.expanding(min_periods=1).mean().iloc[-1])
     fig.text(
-        0.5, -0.015,
-        "Each repeat draws a new equal-depth subset, so rare/near-threshold clones may change "
-        "frequency, detection and fate. Panel A checks the abundance-weighted biological result. "
-        "Panel B checks expanded-set overlap: Jaccard = shared/(T1 ∪ T2), chosen because it penalizes "
-        "both lost T1 clones and new T2 clones. Five hundred repeats stabilize medians and 95% intervals.",
-        ha="center", va="top", fontsize=8.1, color=COLORS["gray"], wrap=True,
+        0.07, 0.235,
+        "Rarefaction and panel A\n"
+        "Each iteration independently samples T1 and T2 without replacement to the patient's\n"
+        "common depth; only the selected reads change. Panel A tracks the abundance-weighted\n"
+        "share of T1-expanded signal that is not detected at T2.",
+        ha="left", va="top", fontsize=8.0, color=COLORS["gray"], linespacing=1.35,
+        bbox={"boxstyle": "round,pad=0.45", "facecolor": "#F7F9FA",
+              "edgecolor": COLORS["light_gray"], "linewidth": 0.7},
+    )
+    fig.text(
+        0.535, 0.235,
+        "Jaccard definition and interpretation\n"
+        "J = |E₁ ∩ E₂| / |E₁ ∪ E₂|; E is the set of clones at ≥0.10%; plotted as 100×J.\n"
+        "0%: no shared expanded clones; 100%: identical sets; higher values: greater overlap.\n"
+        f"Final J = {final_jaccard:.2f}%. It was selected because T1 losses and T2 gains reduce\n"
+        "the score symmetrically.",
+        ha="left", va="top", fontsize=8.0, color=COLORS["gray"], linespacing=1.35,
+        bbox={"boxstyle": "round,pad=0.45", "facecolor": "#F7F9FA",
+              "edgecolor": COLORS["light_gray"], "linewidth": 0.7},
     )
     fig.savefig(outfile, bbox_inches="tight")
     plt.close(fig)
