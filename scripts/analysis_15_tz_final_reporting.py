@@ -584,8 +584,8 @@ def enrichment_plot(branch, outfile, enrichment_frame=None, cohort_label="All pa
          if not source.empty and "branch" in source.columns else pd.DataFrame())
     if not e.empty:
         e = e[pd.to_numeric(e.get("fdr", np.nan), errors="coerce").le(0.05)].copy()
-    fig, ax = plt.subplots(figsize=(10.8, 7.4) if not e.empty else (10.0, 5.0))
-    fig.subplots_adjust(left=0.22, right=0.98, top=0.78, bottom=0.30)
+    fig, ax = plt.subplots(figsize=(10.8, 6.9) if not e.empty else (10.0, 4.8))
+    fig.subplots_adjust(left=0.18, right=0.98, top=0.78, bottom=0.27)
     if e.empty:
         ax.text(0.5, 0.54, "No TRBV, TRBJ or CDR3 3-mer feature passes BH FDR ≤ 0.05",
                 ha="center", va="center", fontsize=11, transform=ax.transAxes)
@@ -612,12 +612,12 @@ def enrichment_plot(branch, outfile, enrichment_frame=None, cohort_label="All pa
             y_pos,
             [f'{feature_names.get(a, a)}: {b}' for a, b in zip(e.feature_type, e.feature)],
         )
-        ax.set_xlabel("Adjusted log odds ratio for contracted/lost fate")
+        ax.set_xlabel("Adjusted log odds ratio for contracted or lost fate")
         finish_axis(ax, "x")
         legend_handles = [
             Line2D([0], [0], marker="o", color="none", markerfacecolor=COLORS["orange"],
                    markeredgecolor="none", markersize=7,
-                   label="Enriched among contracted/lost clones"),
+                   label="Enriched in contracted or lost clones"),
             Line2D([0], [0], marker="o", color="none", markerfacecolor=COLORS["teal"],
                    markeredgecolor="none", markersize=7,
                    label="Enriched among retained clones"),
@@ -631,31 +631,30 @@ def enrichment_plot(branch, outfile, enrichment_frame=None, cohort_label="All pa
               if branch == "pairwise_rarefied"
               else "Patient-clustered GEE using observed frequencies")
     outcome_definition = (
-        "Contracted/lost: ≥5-fold T1-to-T2 decrease, or T2 absence despite ≥0.99 expected "
-        "detection if unchanged."
+        "Contracted: ≥5-fold decrease from T1 to T2.\n"
+        "Lost: absent at T2 despite ≥0.99 expected detection if unchanged.\n"
+        "Retained: detected at T2 at ≥0.10%."
         if branch == "pairwise_rarefied"
-        else "Contracted/lost: ≥5-fold T1-to-T2 decrease, or zero observed T2 reads."
+        else "Contracted: ≥5-fold decrease from T1 to T2.\n"
+             "Lost: zero observed reads at T2.\n"
+             "Retained: detected at T2 at ≥0.10%."
     )
     fig.suptitle(f"Sequence-feature enrichment by clone fate: {cohort_label}\n{method}",
                  y=0.975, fontsize=14.5, fontweight="bold", color=COLORS["ink"])
+    fig.add_artist(Line2D([0.18, 0.98], [0.205, 0.205], transform=fig.transFigure,
+                          color=COLORS["light_gray"], linewidth=0.8))
+    fig.text(0.18, 0.185, "Outcome definitions", ha="left", va="top",
+             fontsize=8.2, fontweight="semibold", color=COLORS["ink"])
+    fig.text(0.18, 0.155, outcome_definition, ha="left", va="top",
+             fontsize=7.7, color=COLORS["gray"], linespacing=1.35)
+    fig.text(0.60, 0.185, "Statistical analysis", ha="left", va="top",
+             fontsize=8.2, fontweight="semibold", color=COLORS["ink"])
     fig.text(
-        0.22, 0.205,
-        f"Outcome groups. {outcome_definition} Retained: detected at T2 at ≥0.10%.",
-        ha="left", va="top", fontsize=8.0, color=COLORS["ink"],
-    )
-    fig.text(
-        0.22, 0.145,
-        "CDR3 motifs. Each CDR3β amino-acid sequence was split into all overlapping 3-aa windows "
-        "(e.g. CASSL → CAS, ASS, SSL); a motif was counted once per clonotype.",
-        ha="left", va="top", fontsize=8.0, color=COLORS["ink"],
-    )
-    fig.text(
-        0.22, 0.085,
-        "Model. Features present in ≥5 clones from ≥3 patients were tested by binomial GEE, "
-        "clustered by patient and adjusted for log10(T1 clone frequency). BH correction was applied "
-        "within each feature family; up to 12 features with FDR ≤0.05 and the largest absolute "
-        "coefficients are shown.",
-        ha="left", va="top", fontsize=8.0, color=COLORS["gray"],
+        0.60, 0.155,
+        "Points show adjusted log odds ratios; horizontal bars show 95% confidence intervals.\n"
+        "Binomial GEE clusters clones by patient and adjusts for log10-transformed\n"
+        "T1 clone frequency. Up to 12 features with BH FDR ≤0.05 are shown.",
+        ha="left", va="top", fontsize=7.7, color=COLORS["gray"], linespacing=1.35,
     )
     fig.savefig(outfile, bbox_inches="tight")
     plt.close(fig)
