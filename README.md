@@ -82,7 +82,7 @@ Each contributing library is sampled without replacement to that pair-specific d
 
 For БА1_071 the two T2 libraries are rarefied separately, converted to frequencies and only then averaged.
 
-An internal T1 null produces empirical `P_detection_if_unchanged`. A high-frequency T1 clone that should nearly always be observed at the available depth but is absent from real T2 is flagged as a sampling-robust loss candidate.
+An internal T1 null produces `P_detection_if_unchanged`: the exact same-depth detection probability calculated after each T1 rarefaction and averaged across iterations. A high-frequency T1 clone that should nearly always be observed at the available depth but is absent from real T2 is flagged as a sampling-robust loss candidate.
 
 This controls finite sequencing depth but cannot remove PCR amplification bias because these libraries have no UMI.
 
@@ -90,7 +90,7 @@ This controls finite sequencing depth but cannot remove PCR amplification bias b
 
 A complementary branch uses the observed normalized repertoire without read downsampling.
 
-The branch reports three deliberately different summaries:
+The supporting patient table retains three summaries:
 
 ```text
 Simpson D = sum(p_i squared)
@@ -98,7 +98,9 @@ Simpson clonality = sqrt(Simpson D)
 normalized richness = unique productive clonotypes / total productive TRB reads
 ```
 
-The workflow also records the mass of clonotypes above 1 percent as context, while the clone-fate analysis keeps the 0.10 percent primary threshold and applies the full 0.05 to 1.50 percent sensitivity grid.
+The main figure shows only Simpson D because `sqrt(Simpson D)` has exactly the same ordering and would be visually redundant. Normalized richness remains in the supplementary patient table because it answers a different question. The workflow also records the mass of clonotypes above 1 percent as context, while the clone-fate analysis keeps the 0.10 percent primary threshold and applies the full 0.05 to 1.50 percent sensitivity grid.
+
+Every analysis is also rendered separately under `figures/adults` and `figures/children`; these subgroup figures never mix patients from the two age strata.
 
 The same T1-to-T2 fate, direction, candidate, enrichment and specificity logic is repeated in this branch without downsampling.
 

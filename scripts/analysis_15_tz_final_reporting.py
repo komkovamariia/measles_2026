@@ -159,7 +159,11 @@ master["candidate_class_simpson_raw"] = master.apply(candidate_class, axis=1, br
 
 # Patient-aware raw-branch enrichment, analogous to the rarefied analysis.
 def enrichment_for_branch(df, branch):
-    z = df[primary_mask.loc[df.index]].copy() if df.index.equals(master.index) else df.copy()
+    # Every enrichment, including age-specific reruns, starts from the same
+    # pre-specified T1-expanded pool. Reindexing avoids silently including
+    # non-primary clones after a subgroup filter.
+    subgroup_primary = primary_mask.reindex(df.index).fillna(False).astype(bool)
+    z = df.loc[subgroup_primary].copy()
     if branch == "rarefied":
         affected = z.get("sampling_candidate_class", "").astype(str).isin(["sampling-robust not detected", "strong contraction"])
         retained = z.get("sampling_candidate_class", "").astype(str).eq("retained expanded")
@@ -292,16 +296,28 @@ convergence.to_csv(SUPP / "06_downsampling_iteration_convergence.csv", index=Fal
 for d in [
     "group", "main", "downsampling_pairwise", "sensitivity_thresholds",
     "supplementary", "rarefied", "simpson_raw", "validation", "patients",
+    "adults", "children",
 ]:
     p = FIG / d
     if p.exists():
         shutil.rmtree(p)
 for d in [FIG / "patients", FIG / "rarefied", FIG / "simpson_raw", FIG / "validation"]:
     d.mkdir(parents=True, exist_ok=True)
+for cohort in ["adults", "children"]:
+    for section in ["patients", "rarefied", "simpson_raw", "validation"]:
+        (FIG / cohort / section).mkdir(parents=True, exist_ok=True)
 patient_src = FIG / "current" / "patients"
 if patient_src.exists():
     for p in sorted(patient_src.glob("*.png")):
         shutil.copy2(p, FIG / "patients" / p.name)
+        patient = next((value for value in sorted(master.patient.astype(str).unique(), key=len, reverse=True)
+                        if p.stem.startswith(value)), None)
+        if patient is None:
+            continue
+        ages = master.loc[master.patient.astype(str).eq(patient), "age_group"].dropna().astype(str)
+        if not ages.empty and ages.iloc[0] in {"adult", "child"}:
+            cohort = "adults" if ages.iloc[0] == "adult" else "children"
+            shutil.copy2(p, FIG / cohort / "patients" / p.name)
 
 
 def label_for_clone(row):
@@ -312,9 +328,10 @@ def mean_by_age(df, value, age):
     return float(pd.to_numeric(df.loc[df.age_group.eq(age), value], errors="coerce").mean())
 
 
-def stacked_fate(ax, sens, title, suffix):
+def stacked_fate(ax, sens, title, suffix, age_groups=("child", "adult")):
     z = sens[np.isclose(pd.to_numeric(sens.threshold_percent, errors="coerce"), 0.10)].copy()
-    xs, ages, bottom = np.arange(2), ["child", "adult"], np.zeros(2)
+    ages = list(age_groups)
+    xs, bottom = np.arange(len(ages)), np.zeros(len(ages))
     specs = [
         ("retained_mass_percent" + suffix, "Retained expanded"),
         ("below_mass_percent" + suffix, "Detected below threshold"),
@@ -330,7 +347,9 @@ def stacked_fate(ax, sens, title, suffix):
                         f"{value:.1f}%", ha="center", va="center", fontsize=8)
         bottom += np.nan_to_num(values)
     counts = [z.loc[z.age_group.eq(age), "patient"].nunique() for age in ages]
-    ax.set_xticks(xs, [f"Children\n(n={counts[0]} paired)", f"Adults\n(n={counts[1]} paired)"])
+    age_names = {"child": "Children", "adult": "Adults"}
+    ax.set_xticks(xs, [f"{age_names.get(age, age.title())}\n(n={count} paired)"
+                       for age, count in zip(ages, counts)])
     ax.set_ylim(0, 100)
     ax.set_ylabel("Mean share of each patient's T1-expanded mass (%)")
     ax.set_title(title)
@@ -338,10 +357,9 @@ def stacked_fate(ax, sens, title, suffix):
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=3)
 
 
-def shared_scatter(ax, xcol, ycol, title, dircol):
-    z = master[
-        primary_mask & pd.to_numeric(master[ycol], errors="coerce").gt(0)
-    ].copy()
+def shared_scatter(ax, xcol, ycol, title, dircol, age_group=None):
+    keep_age = pd.Series(True, index=master.index) if age_group is None else master.age_group.eq(age_group)
+    z = master[primary_mask & keep_age & pd.to_numeric(master[ycol], errors="coerce").gt(0)].copy()
     x = 100 * pd.to_numeric(z[xcol], errors="coerce").to_numpy(float)
     y = 100 * pd.to_numeric(z[ycol], errors="coerce").to_numpy(float)
     direction = z[dircol].astype(str)
@@ -366,21 +384,33 @@ def shared_scatter(ax, xcol, ycol, title, dircol):
     annotate_ranked_points(ax, x, y, labels, np.argsort(-np.maximum(x, y))[:10])
 
 
-def plot_threshold_lines(ax, sens, branches, ages=True):
+def plot_threshold_lines(ax, sens, branches, age_groups=("child", "adult")):
     names = {"pairwise_rarefied": "Repeated rarefaction",
              "simpson_no_downsampling": "Observed frequency"}
     for branch in branches:
         q_branch = sens[sens.branch.eq(branch)].copy()
-        groups = [("child", "Children"), ("adult", "Adults")] if ages else [(None, "All paired patients")]
+        groups = [(age, {"child": "Children", "adult": "Adults"}.get(age, age.title()))
+                  for age in age_groups] if age_groups else [(None, "All paired patients")]
         for age, age_label in groups:
             q = q_branch if age is None else q_branch[q_branch.age_group.eq(age)]
             g = q.groupby("threshold_percent")["not_detected_mass_percent_median"].mean().reindex(THRESHOLD_PCT)
+            branch_color = AGE_COLORS[age] if age else BRANCH_COLORS[branch]
             ax.plot(
-                g.index, g.values, marker="o", ms=3.5,
+                g.index, g.values, marker="o" if branch == "pairwise_rarefied" else "s", ms=3.5,
                 linestyle="-" if branch == "pairwise_rarefied" else "--",
-                color=AGE_COLORS[age] if age else BRANCH_COLORS[branch],
-                label=f"{names[branch]}: {age_label}" if ages else names[branch],
+                markerfacecolor=branch_color if branch == "pairwise_rarefied" else "white",
+                markeredgecolor=branch_color,
+                color=branch_color,
+                zorder=3 if branch == "simpson_no_downsampling" else 2,
+                label=f"{names[branch]}: {age_label}" if age_groups else names[branch],
             )
+            missing = g[g.isna()].index
+            if len(missing):
+                ax.scatter(missing, np.zeros(len(missing)), marker="x", s=26,
+                           color=branch_color, zorder=4)
+                first = float(missing[0])
+                ax.annotate("n=0 eligible", (first, 0), xytext=(3, 7),
+                            textcoords="offset points", fontsize=7, color=branch_color)
     ax.axvline(0.10, color=COLORS["ink"], linestyle=":", linewidth=1.2)
     ax.text(0.10, 0.98, " selected 0.10%", transform=ax.get_xaxis_transform(),
             ha="left", va="top", fontsize=8)
@@ -431,8 +461,8 @@ axes[0].legend(loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=2)
 labels = np.array([label_for_clone(r) for r in z.itertuples(index=False)], dtype=object)
 annotate_ranked_points(axes[0], x, y, labels, np.argsort(-np.nan_to_num(x - y, nan=-np.inf))[:10],
                        color=COLORS["orange"])
-plot_threshold_lines(axes[1], threshold_final, ["pairwise_rarefied"], ages=True)
-axes[1].set_title("Sensitivity to the expansion threshold\nComplete 0.05–1.50% grid without an empty interval")
+plot_threshold_lines(axes[1], threshold_final, ["pairwise_rarefied"])
+axes[1].set_title("Sensitivity to the expansion threshold\n× at zero means no eligible patient, not zero clone loss")
 axes[1].legend(loc="best")
 panel_label(axes[0], "A")
 panel_label(axes[1], "B")
@@ -441,10 +471,11 @@ fig.savefig(FIG / "rarefied" / "02_sampling_and_sensitivity.png", bbox_inches="t
 plt.close(fig)
 
 
-def dumbbell_and_trbv(branch, xcol, ycol, dircol, outfile):
+def dumbbell_and_trbv(branch, xcol, ycol, dircol, outfile, age_group=None):
+    keep_age = pd.Series(True, index=master.index) if age_group is None else master.age_group.eq(age_group)
     paired = master[
         primary_mask & master.patient.astype(str).isin(paired_patients)
-        & pd.to_numeric(master[ycol], errors="coerce").gt(0)
+        & keep_age & pd.to_numeric(master[ycol], errors="coerce").gt(0)
     ].copy()
     log_col = "rarefied_log2_T2_over_T1" if branch == "rarefied" else "raw_log2_T2_over_T1"
     blocks = []
@@ -519,9 +550,11 @@ dumbbell_and_trbv(
 )
 
 
-def enrichment_plot(branch, outfile):
+def enrichment_plot(branch, outfile, enrichment_frame=None, cohort_label="All paired patients"):
     fig, ax = plt.subplots(figsize=(9.8, 6.4), constrained_layout=True)
-    e = enrichment[enrichment.branch.astype(str).eq(branch)].copy() if not enrichment.empty else pd.DataFrame()
+    source = enrichment if enrichment_frame is None else enrichment_frame
+    e = (source[source.branch.astype(str).eq(branch)].copy()
+         if not source.empty and "branch" in source.columns else pd.DataFrame())
     if not e.empty:
         e = e[pd.to_numeric(e.get("fdr", np.nan), errors="coerce").le(0.05)].copy()
     if e.empty:
@@ -542,67 +575,75 @@ def enrichment_plot(branch, outfile):
                    s=42, zorder=3)
         ax.axvline(0, color=COLORS["ink"], linewidth=0.9)
         ax.set_yticks(y_pos, [f'{a}: {b}' for a, b in zip(e.feature_type, e.feature)])
-        ax.set_xlabel("Log odds of affected versus retained clone")
+        ax.set_xlabel("Model estimate: retained ← 0 → contracted/lost")
         finish_axis(ax, "x")
     method = ("Patient-clustered GEE after repeated rarefaction"
               if branch == "pairwise_rarefied"
               else "Patient-clustered GEE using observed frequencies")
-    ax.set_title("Features enriched among contracted or lost T1-expanded clones\n"
-                 f"{method}; adjusted for log10(T1 fraction); BH FDR ≤ 0.05")
+    ax.set_title(f"Which sequence features differ between clone fates: {cohort_label}\n{method}")
+    fig.text(
+        0.5, 0.01,
+        "How to read: orange points to the right of 0 are more common in contracted/lost clones; "
+        "teal points to the left are more common in retained clones. Dot = adjusted estimate; "
+        "line = 95% CI. Model groups clones from the same patient, adjusts for T1 abundance, "
+        "and displays only BH FDR ≤ 0.05.",
+        ha="center", va="bottom", fontsize=8.1, color=COLORS["gray"], wrap=True,
+    )
     fig.savefig(outfile, bbox_inches="tight")
     plt.close(fig)
 
 
 enrichment_plot("pairwise_rarefied", FIG / "rarefied" / "04_enrichment_and_specificity.png")
 
-# Observed-frequency branch 01: three distinct repertoire summaries and raw fate.
-fig, axes = plt.subplots(2, 2, figsize=(14.2, 9.5), constrained_layout=True)
-metric_specs = [
-    ("simpson_D", "Simpson D: clone concentration", "Higher values mean stronger dominance by large clones"),
-    ("simpson_clonality", "Square-root Simpson D: transformed concentration", "Same ranking as Simpson D; high values are compressed"),
-    ("normalized_richness", "Normalized richness: unique clones per productive read", "Higher values mean more distinct nucleotide clones relative to depth"),
-]
-for ax, (metric, title, subtitle) in zip(axes.flat[:3], metric_specs):
+from matplotlib.lines import Line2D
+
+
+def simpson_and_fate(outfile, age_groups=("child", "adult"), cohort_label="All paired patients"):
+    """Keep only the non-redundant Simpson D panel plus clone fate."""
+    fig, axes = plt.subplots(1, 2, figsize=(13.8, 5.8), constrained_layout=True)
+    q_metrics = raw_metrics[raw_metrics.age_group.isin(age_groups)].copy()
     extreme = []
-    for patient, q in raw_metrics.groupby("patient"):
+    for patient, q in q_metrics.groupby("patient"):
         if not {"T1", "T2"}.issubset(set(q.timepoint)):
             continue
-        a = float(q.loc[q.timepoint.eq("T1"), metric].iloc[0])
-        b = float(q.loc[q.timepoint.eq("T2"), metric].iloc[0])
+        a = float(q.loc[q.timepoint.eq("T1"), "simpson_D"].iloc[0])
+        b = float(q.loc[q.timepoint.eq("T2"), "simpson_D"].iloc[0])
         age = str(q.age_group.iloc[0])
         color = AGE_COLORS.get(age, COLORS["gray"])
-        ax.plot([1, 2], [a, b], color=color, alpha=0.34, linewidth=1)
-        ax.scatter([1, 2], [a, b], color=color, s=16, alpha=0.72)
+        axes[0].plot([1, 2], [a, b], color=color, alpha=0.38, linewidth=1.1)
+        axes[0].scatter([1, 2], [a, b], color=color, s=19, alpha=0.78)
         extreme.append((abs(b - a), str(patient), b))
     for rank, (_, patient, b) in enumerate(sorted(extreme, reverse=True)[:3]):
-        ax.annotate(patient, xy=(2, b), xycoords="data",
-                    xytext=(0.78, 0.88 - 0.11 * rank), textcoords="axes fraction",
-                    fontsize=7.5, ha="left", va="center",
-                    arrowprops={"arrowstyle": "-", "color": COLORS["gray"], "lw": 0.7},
-                    bbox={"facecolor": "white", "edgecolor": COLORS["light_gray"],
-                          "boxstyle": "round,pad=0.15", "alpha": 0.9})
-    ax.set_xticks([1, 2], ["T1\nearly infection", "T2\nrecovery"])
-    ax.set_title(f"{title}\n{subtitle}")
-    finish_axis(ax, "y")
-    delta = raw_metrics.pivot(index="patient", columns="timepoint", values=metric).dropna()
+        axes[0].annotate(patient, xy=(2, b), xycoords="data",
+                         xytext=(0.74, 0.88 - 0.11 * rank), textcoords="axes fraction",
+                         fontsize=7.5, ha="left", va="center",
+                         arrowprops={"arrowstyle": "-", "color": COLORS["gray"], "lw": 0.7},
+                         bbox={"facecolor": "white", "edgecolor": COLORS["light_gray"],
+                               "boxstyle": "round,pad=0.15", "alpha": 0.9})
+    axes[0].set_xticks([1, 2], ["T1\nearly infection", "T2\nrecovery"])
+    axes[0].set_ylabel("Simpson D = Σ(clone fraction²)")
+    axes[0].set_title("Repertoire concentration without downsampling\nHigher Simpson D means stronger dominance by large clones")
+    finish_axis(axes[0], "y")
+    delta = q_metrics.pivot(index="patient", columns="timepoint", values="simpson_D").dropna()
     med = float((delta["T2"] - delta["T1"]).median()) if not delta.empty else np.nan
-    ax.text(0.02, 0.04, f"Median paired change: {med:+.3g}", transform=ax.transAxes, fontsize=8)
-stacked_fate(
-    axes[1, 1], threshold_final[threshold_final.branch.eq("simpson_no_downsampling")],
-    "Observed clone fate at the selected 0.10% threshold\nMean across paired patients; no read downsampling",
-    "_median",
-)
-from matplotlib.lines import Line2D
-axes[0, 0].legend(handles=[
-    Line2D([0], [0], color=AGE_COLORS["child"], marker="o", label="Children"),
-    Line2D([0], [0], color=AGE_COLORS["adult"], marker="o", label="Adults"),
-], loc="best")
-for label, ax in zip(["A", "B", "C", "D"], axes.flat):
-    panel_label(ax, label)
-fig.suptitle("Observed repertoires without downsampling: complementary diversity summaries",
-             fontsize=15, fontweight="bold", color=COLORS["ink"])
-fig.savefig(FIG / "simpson_raw" / "01_simpson_metrics_and_fate.png", bbox_inches="tight")
-plt.close(fig)
+    axes[0].text(0.02, 0.04, f"Median paired change: {med:+.3g}", transform=axes[0].transAxes, fontsize=8)
+    handles = [Line2D([0], [0], color=AGE_COLORS[age], marker="o",
+                      label={"child": "Children", "adult": "Adults"}[age]) for age in age_groups]
+    axes[0].legend(handles=handles, loc="best")
+    stacked_fate(
+        axes[1], threshold_final[threshold_final.branch.eq("simpson_no_downsampling")],
+        "Observed-frequency clone fate at 0.10%\nMean of patients; full libraries, no downsampling",
+        "_median", age_groups=age_groups,
+    )
+    panel_label(axes[0], "A")
+    panel_label(axes[1], "B")
+    fig.suptitle(f"Observed-frequency branch: {cohort_label}",
+                 fontsize=15, fontweight="bold", color=COLORS["ink"])
+    fig.savefig(outfile, bbox_inches="tight")
+    plt.close(fig)
+
+
+simpson_and_fate(FIG / "simpson_raw" / "01_simpson_metrics_and_fate.png")
 
 # Direct clone-level and threshold-level comparison to the primary branch.
 fig, axes = plt.subplots(1, 2, figsize=(14.4, 5.9), constrained_layout=True)
@@ -634,7 +675,7 @@ labels = np.array([label_for_clone(r) for r in z.itertuples(index=False)], dtype
 annotate_ranked_points(axes[0], x, y, labels, np.argsort(-np.abs(x - y))[:10],
                        color=COLORS["orange"])
 plot_threshold_lines(axes[1], threshold_final,
-                     ["pairwise_rarefied", "simpson_no_downsampling"], ages=True)
+                     ["pairwise_rarefied", "simpson_no_downsampling"])
 axes[1].set_title("Threshold sensitivity in both branches\nSolid: repeated rarefaction; dashed: observed frequency")
 axes[1].legend(loc="best", fontsize=7.6)
 panel_label(axes[0], "A")
@@ -680,105 +721,285 @@ fig.colorbar(im, ax=ax, shrink=0.8, label="Percentage within rarefaction directi
 fig.savefig(FIG / "validation" / "02_branch_concordance.png", bbox_inches="tight")
 plt.close(fig)
 
-# Threshold-choice figure.
-fig, axes = plt.subplots(1, 2, figsize=(14.2, 5.7), constrained_layout=True)
-plot_threshold_lines(axes[0], threshold_final,
-                     ["pairwise_rarefied", "simpson_no_downsampling"], ages=False)
-axes[0].set_title("Apparent clone loss across thresholds\nAgreement between branches indicates robustness")
-axes[0].legend(loc="best")
-for branch, label in [
-    ("pairwise_rarefied", "Repeated rarefaction"),
-    ("simpson_no_downsampling", "Observed frequency"),
-]:
-    q = threshold_final[threshold_final.branch.eq(branch)]
-    col = "n_T1_expanded_median" if "n_T1_expanded_median" in q.columns else "n_T1_expanded"
-    g = q.groupby("threshold_percent")[col].median().reindex(THRESHOLD_PCT)
-    axes[1].plot(g.index, g.values, marker="o", ms=4, color=BRANCH_COLORS[branch], label=label)
-axes[1].axvline(0.10, color=COLORS["ink"], linestyle=":", linewidth=1.2)
-axes[1].axvspan(0.075, 0.125, color=COLORS["gold"], alpha=0.18)
-axes[1].text(0.10, 0.98, " selected 0.10%", transform=axes[1].get_xaxis_transform(),
-             ha="left", va="top", fontsize=8)
-axes[1].set_xticks(THRESHOLD_PCT)
-axes[1].tick_params(axis="x", rotation=45)
-axes[1].set_xlabel("T1 expansion threshold (%)")
-axes[1].set_ylabel("Median T1-expanded clone count per patient")
-axes[1].set_title("Candidate coverage across thresholds\nHigher cutoffs progressively remove potentially informative clones")
-axes[1].legend(loc="best")
-finish_axis(axes[1], "both")
-panel_label(axes[0], "A")
-panel_label(axes[1], "B")
-fig.suptitle("Threshold choice: 0.10% retained as the primary expansion cutoff",
-             fontsize=15, fontweight="bold", color=COLORS["ink"])
-fig.text(0.5, -0.015,
-         "Rationale: 0.10% avoids the most sampling-sensitive 0.05% boundary while retaining "
-         "more candidate clones than stricter cutoffs. The full grid remains visible.",
-         ha="center", va="top", fontsize=8.5)
-fig.savefig(FIG / "validation" / "03_threshold_selection.png", bbox_inches="tight")
-plt.close(fig)
+def threshold_selection_plot(outfile, age_group=None, cohort_label="All paired patients"):
+    source = threshold_final if age_group is None else threshold_final[threshold_final.age_group.eq(age_group)]
+    fig, axes = plt.subplots(1, 2, figsize=(14.2, 5.7), constrained_layout=True)
+    plot_threshold_lines(axes[0], source,
+                         ["pairwise_rarefied", "simpson_no_downsampling"], age_groups=())
+    axes[0].set_title("T1 mass later not detected\nCircle/solid: rarefaction; hollow square/dashed: observed frequencies")
+    axes[0].legend(loc="best")
+    for branch, label in [
+        ("pairwise_rarefied", "Repeated rarefaction"),
+        ("simpson_no_downsampling", "Observed frequency"),
+    ]:
+        q = source[source.branch.eq(branch)]
+        col = "n_T1_expanded_median" if "n_T1_expanded_median" in q.columns else "n_T1_expanded"
+        g = q.groupby("threshold_percent")[col].median().reindex(THRESHOLD_PCT)
+        color = BRANCH_COLORS[branch]
+        axes[1].plot(g.index, g.values, marker="o" if branch == "pairwise_rarefied" else "s",
+                     markerfacecolor=color if branch == "pairwise_rarefied" else "white",
+                     linestyle="-" if branch == "pairwise_rarefied" else "--",
+                     ms=4, color=color, label=label)
+    for ax in axes:
+        ax.axvline(0.10, color=COLORS["ink"], linestyle=":", linewidth=1.2)
+        ax.axvspan(0.075, 0.125, color=COLORS["gold"], alpha=0.14)
+        ax.text(0.10, 0.98, " selected 0.10%", transform=ax.get_xaxis_transform(),
+                ha="left", va="top", fontsize=8)
+        ax.set_xticks(THRESHOLD_PCT)
+        ax.tick_params(axis="x", rotation=45)
+    axes[1].set_xlabel("T1 expansion threshold (%)")
+    axes[1].set_ylabel("Median T1-expanded clone count per patient")
+    axes[1].set_title("Candidate coverage\nAll thresholds, including 0.90%, are computed")
+    axes[1].legend(loc="best")
+    finish_axis(axes[1], "both")
+    panel_label(axes[0], "A")
+    panel_label(axes[1], "B")
+    fig.suptitle(f"Threshold choice for {cohort_label}: 0.10% primary cutoff",
+                 fontsize=15, fontweight="bold", color=COLORS["ink"])
+    fig.text(0.5, -0.015,
+             "0.10% is the pre-specified balance: it avoids the sampling-sensitive 0.05% edge "
+             "and retains more candidates than stricter cutoffs. Overlapping lines mean the two "
+             "methods give nearly the same estimate; a dashed line never means 'not calculated'.",
+             ha="center", va="top", fontsize=8.4)
+    fig.savefig(outfile, bbox_inches="tight")
+    plt.close(fig)
 
-# Iteration convergence of the repeated rarefaction.
-iter_means = convergence.groupby("iteration", as_index=True).agg(
-    not_detected_mass_percent=("not_detected_mass_percent", "mean"),
-    expanded_jaccard=("expanded_jaccard", "mean"),
-).sort_index()
-series = {
-    "T1 mass not detected at T2": iter_means["not_detected_mass_percent"],
-    "Expanded Jaccard × 100": 100 * iter_means["expanded_jaccard"],
-}
-colors = [COLORS["orange"], COLORS["teal"]]
-running = {name: values.expanding(min_periods=1).mean() for name, values in series.items()}
-errors = {name: (values - values.iloc[-1]).abs() for name, values in running.items()}
-combined_error = pd.concat(errors, axis=1).max(axis=1)
-stable_iteration = next(
-    (int(i) for i in combined_error.index if (combined_error.loc[i:] <= 1.0).all()),
-    None,
-)
-fig, axes = plt.subplots(1, 2, figsize=(13.8, 5.4), constrained_layout=True)
-for (name, values), color in zip(running.items(), colors):
-    axes[0].plot(values.index, values.values, color=color, label=name)
-    axes[0].axhline(values.iloc[-1], color=color, linestyle=":", linewidth=1)
-    axes[1].plot(errors[name].index, errors[name].values, color=color, label=name)
-axes[0].set(xlabel="Rarefaction iterations accumulated",
-            ylabel="Cumulative cohort estimate (%)",
-            title="Cumulative estimates at the primary 0.10% threshold\nDotted lines show the final estimate")
-finish_axis(axes[0], "both")
-axes[0].legend(loc="best")
-axes[1].axhspan(0, 1, color=COLORS["teal"], alpha=0.10)
-axes[1].axhline(1, color=COLORS["teal"], linestyle="--", linewidth=1, label="±1 percentage point")
-if stable_iteration is not None:
-    axes[1].axvline(stable_iteration, color=COLORS["ink"], linestyle=":", linewidth=1)
-    axes[1].text(stable_iteration, 0.96, f" stable from {stable_iteration}",
-                 transform=axes[1].get_xaxis_transform(), ha="left", va="top", fontsize=8)
-else:
-    axes[1].text(0.98, 0.96, "No joint ±1 pp stabilization within the run",
-                 transform=axes[1].transAxes, ha="right", va="top", fontsize=8)
-axes[1].set(xlabel="Rarefaction iterations accumulated",
-            ylabel="Absolute deviation from final estimate (percentage points)",
-            title="Monte Carlo convergence\nLower values mean that extra iterations change little")
-finish_axis(axes[1], "both")
-axes[1].legend(loc="best")
-panel_label(axes[0], "A")
-panel_label(axes[1], "B")
-fig.suptitle(f"Repeated rarefaction convergence: {int(iter_means.index.max())} iterations",
-             fontsize=15, fontweight="bold", color=COLORS["ink"])
-fig.savefig(FIG / "validation" / "04_downsampling_iterations.png", bbox_inches="tight")
-plt.close(fig)
+
+if "age_group" not in convergence.columns and "patient" in convergence.columns:
+    patient_age = master[["patient", "age_group"]].drop_duplicates("patient")
+    convergence = convergence.merge(patient_age, on="patient", how="left")
+
+
+def iteration_convergence_plot(outfile, age_group=None, cohort_label="All paired patients"):
+    source = convergence if age_group is None else convergence[convergence.age_group.eq(age_group)]
+    iter_means = source.groupby("iteration", as_index=True).agg(
+        not_detected_mass_percent=("not_detected_mass_percent", "mean"),
+        expanded_jaccard=("expanded_jaccard", "mean"),
+    ).sort_index()
+    series = [
+        ("T1-expanded mass not detected at T2", iter_means["not_detected_mass_percent"], COLORS["orange"]),
+        ("Expanded-set Jaccard similarity", 100 * iter_means["expanded_jaccard"], COLORS["teal"]),
+    ]
+    fig, axes = plt.subplots(1, 2, figsize=(14.0, 5.5), constrained_layout=True)
+    for ax, (title, values, color) in zip(axes, series):
+        running_mean = values.expanding(min_periods=1).mean()
+        n = pd.Series(np.arange(1, len(values) + 1), index=values.index, dtype=float)
+        mc_se = values.expanding(min_periods=2).std() / np.sqrt(n)
+        ci = (1.96 * mc_se).fillna(0.0)
+        ax.scatter(values.index, values.values, s=8, color=color, alpha=0.12,
+                   label="One complete resampling iteration")
+        ax.fill_between(values.index.to_numpy(float),
+                        (running_mean - ci).to_numpy(float),
+                        (running_mean + ci).to_numpy(float),
+                        color=color, alpha=0.16, label="Running 95% Monte Carlo CI")
+        ax.plot(running_mean.index, running_mean.values, color=color, linewidth=1.8,
+                label="Running mean through iteration k")
+        final_value = float(running_mean.iloc[-1])
+        ax.axhline(final_value, color=COLORS["ink"], linestyle=":", linewidth=1)
+        ax.text(0.98, 0.05, f"Final {len(values)}-iteration mean: {final_value:.2f}%",
+                transform=ax.transAxes, ha="right", va="bottom", fontsize=8)
+        ax.set(xlabel="Number of complete rarefaction iterations accumulated",
+               ylabel="Cohort estimate (%)", title=title)
+        finish_axis(ax, "both")
+        ax.legend(loc="best", fontsize=7.6)
+    panel_label(axes[0], "A")
+    panel_label(axes[1], "B")
+    fig.suptitle(f"Does repeated rarefaction converge: {cohort_label}",
+                 fontsize=15, fontweight="bold", color=COLORS["ink"])
+    fig.text(0.5, -0.015,
+             "One iteration samples every accepted T1 and T2 library without replacement to its "
+             "patient-pair common depth, then recomputes clone frequencies, fates and Jaccard. "
+             "Faint dots are individual iterations; the solid line and band show convergence.",
+             ha="center", va="top", fontsize=8.3)
+    fig.savefig(outfile, bbox_inches="tight")
+    plt.close(fig)
+
+
+threshold_selection_plot(FIG / "validation" / "03_threshold_selection.png")
+iteration_convergence_plot(FIG / "validation" / "04_downsampling_iterations.png")
+
+
+def sampling_and_sensitivity_plot(outfile, age_group=None, cohort_label="All paired patients"):
+    keep_age = pd.Series(True, index=master.index) if age_group is None else master.age_group.eq(age_group)
+    z = master[primary_mask & keep_age].copy()
+    fig, axes = plt.subplots(1, 2, figsize=(14.2, 5.8), constrained_layout=True)
+    x = pd.to_numeric(z["P_detection_if_unchanged_empirical"], errors="coerce").to_numpy(float)
+    y = pd.to_numeric(z["P_detection_in_observed_T2_rarefactions"], errors="coerce").to_numpy(float)
+    robust = truthy(z["sampling_robust_not_detected"]) if "sampling_robust_not_detected" in z.columns else pd.Series(False, index=z.index)
+    axes[0].fill_between([0.8, 1.0], 0, 0.2, color=COLORS["orange"], alpha=0.10)
+    axes[0].scatter(x[~robust.to_numpy()], y[~robust.to_numpy()], s=24, alpha=0.45,
+                    color=COLORS["blue"], edgecolor="white", linewidth=0.3,
+                    label="Other T1-expanded clones")
+    axes[0].scatter(x[robust.to_numpy()], y[robust.to_numpy()], marker="*", s=85,
+                    color=COLORS["orange"], edgecolor=COLORS["ink"], linewidth=0.35,
+                    label="Sampling-robust absence at T2")
+    axes[0].plot([0, 1], [0, 1], linestyle="--", color=COLORS["gray"], linewidth=1)
+    axes[0].set(xlim=(0, 1.01), ylim=(0, 1.01),
+                xlabel="Expected detection if the T1 clone stayed equally abundant",
+                ylabel="Fraction of T2 rarefactions where the clone was detected",
+                title="Depth-only expectation versus real T2 observations\nBottom-right: disappearance exceeds sampling expectation")
+    finish_axis(axes[0], "both")
+    axes[0].legend(loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=2)
+    labels = np.array([label_for_clone(r) for r in z.itertuples(index=False)], dtype=object)
+    annotate_ranked_points(axes[0], x, y, labels,
+                           np.argsort(-np.nan_to_num(x - y, nan=-np.inf))[:10],
+                           color=COLORS["orange"])
+    sens = threshold_final[threshold_final.branch.eq("pairwise_rarefied")]
+    if age_group is not None:
+        sens = sens[sens.age_group.eq(age_group)]
+    plot_threshold_lines(axes[1], sens, ["pairwise_rarefied"], age_groups=())
+    axes[1].set_title("Threshold sensitivity\n× at zero means no eligible patient, not zero clone loss")
+    axes[1].legend(loc="best")
+    panel_label(axes[0], "A")
+    panel_label(axes[1], "B")
+    fig.suptitle(f"Sampling robustness and threshold sensitivity: {cohort_label}",
+                 fontsize=15, fontweight="bold", color=COLORS["ink"])
+    fig.savefig(outfile, bbox_inches="tight")
+    plt.close(fig)
+
+
+def branch_comparison_plot(outfile, age_group=None, cohort_label="All paired patients"):
+    keep_age = pd.Series(True, index=master.index) if age_group is None else master.age_group.eq(age_group)
+    z = master[
+        primary_mask & keep_age
+        & pd.to_numeric(master["rarefied_log2_T2_over_T1"], errors="coerce").notna()
+        & pd.to_numeric(master["raw_log2_T2_over_T1"], errors="coerce").notna()
+    ].copy()
+    x = pd.to_numeric(z["rarefied_log2_T2_over_T1"], errors="coerce").to_numpy(float)
+    y = pd.to_numeric(z["raw_log2_T2_over_T1"], errors="coerce").to_numpy(float)
+    same = z["rarefied_direction_0_10_percent"].astype(str).eq(
+        z["raw_direction_0_10_percent"].astype(str)).to_numpy()
+    fig, axes = plt.subplots(1, 2, figsize=(14.4, 5.9), constrained_layout=True)
+    axes[0].scatter(x[same], y[same], s=25, color=COLORS["teal"], alpha=0.48,
+                    edgecolor="white", linewidth=0.3, label="Same direction class")
+    axes[0].scatter(x[~same], y[~same], s=34, color=COLORS["orange"], alpha=0.78,
+                    edgecolor="white", linewidth=0.3, label="Different direction class")
+    limit = max(1.0, float(np.nanmax(np.abs(np.concatenate([x, y]))))) * 1.08 if len(x) else 1.0
+    axes[0].plot([-limit, limit], [-limit, limit], linestyle="--", color=COLORS["gray"], linewidth=1)
+    axes[0].axhline(0, color=COLORS["light_gray"], linewidth=0.8)
+    axes[0].axvline(0, color=COLORS["light_gray"], linewidth=0.8)
+    axes[0].set(xlim=(-limit, limit), ylim=(-limit, limit),
+                xlabel="Repeated rarefaction: log2(T2/T1)",
+                ylabel="Observed frequency: log2(T2/T1)",
+                title="Clone-level agreement\nDiagonal means the two estimates are equal")
+    finish_axis(axes[0], "both")
+    axes[0].legend(loc="lower right")
+    sens = threshold_final if age_group is None else threshold_final[threshold_final.age_group.eq(age_group)]
+    plot_threshold_lines(axes[1], sens,
+                         ["pairwise_rarefied", "simpson_no_downsampling"], age_groups=())
+    axes[1].set_title("Same outcome calculated two ways\nFilled circle/solid: rarefaction; hollow square/dashed: observed")
+    axes[1].legend(loc="best", fontsize=7.6)
+    panel_label(axes[0], "A")
+    panel_label(axes[1], "B")
+    fig.suptitle(f"Rarefaction versus observed-frequency branch: {cohort_label}",
+                 fontsize=15, fontweight="bold", color=COLORS["ink"])
+    fig.savefig(outfile, bbox_inches="tight")
+    plt.close(fig)
+
+
+def concordance_plot(outfile, age_group=None, cohort_label="All paired patients"):
+    keep_age = pd.Series(True, index=master.index) if age_group is None else master.age_group.eq(age_group)
+    z = master[primary_mask & keep_age].copy()
+    tab = pd.crosstab(
+        pd.Categorical(z["rarefied_direction_0_10_percent"], categories=direction_order),
+        pd.Categorical(z["raw_direction_0_10_percent"], categories=direction_order),
+        dropna=False,
+    )
+    row_pct = tab.div(tab.sum(axis=1).replace(0, np.nan), axis=0) * 100
+    fig, ax = plt.subplots(figsize=(8.2, 6.6), constrained_layout=True)
+    im = ax.imshow(row_pct.to_numpy(float), vmin=0, vmax=100, cmap="Blues", aspect="auto")
+    for i in range(tab.shape[0]):
+        for j in range(tab.shape[1]):
+            value, count = row_pct.iloc[i, j], int(tab.iloc[i, j])
+            ax.text(j, i, f"{count}\n{value:.1f}%" if np.isfinite(value) else f"{count}\nn/a",
+                    ha="center", va="center",
+                    color="white" if np.isfinite(value) and value >= 55 else COLORS["ink"], fontsize=9)
+    ax.set_xticks(np.arange(len(direction_order)), [x.title() for x in direction_order], rotation=25, ha="right")
+    ax.set_yticks(np.arange(len(direction_order)), [x.title() for x in direction_order])
+    ax.set_xlabel("Observed-frequency direction class")
+    ax.set_ylabel("Repeated-rarefaction direction class")
+    ax.set_title(f"Direction agreement at 0.10%: {cohort_label}\nRows: rarefaction; columns: observed frequencies")
+    fig.colorbar(im, ax=ax, shrink=0.8, label="Percentage within rarefaction row (%)")
+    fig.savefig(outfile, bbox_inches="tight")
+    plt.close(fig)
+
+
+# Re-render the combined explanatory panels with the same clearer encodings used below.
+sampling_and_sensitivity_plot(FIG / "rarefied" / "02_sampling_and_sensitivity.png")
+branch_comparison_plot(FIG / "simpson_raw" / "02_shared_and_sensitivity.png")
+concordance_plot(FIG / "validation" / "02_branch_concordance.png")
+
+
+# Age-specific trees contain the same analyses but never mix adult and child clones.
+for age_group, cohort_dir, cohort_label in [
+    ("adult", "adults", "Adults only"),
+    ("child", "children", "Children only"),
+]:
+    base = FIG / cohort_dir
+    age_groups = (age_group,)
+    fig, axes = plt.subplots(1, 2, figsize=(14.2, 6.1), constrained_layout=True)
+    shared_scatter(
+        axes[0], "T1_fraction_rarefied_median", "T2_fraction_rarefied_median",
+        f"Shared T1-expanded clones: {cohort_label}\nTop 10 by maximum T1/T2 fraction are labelled",
+        "rarefied_direction_0_10_percent", age_group=age_group,
+    )
+    stacked_fate(
+        axes[1], threshold_final[threshold_final.branch.eq("pairwise_rarefied")],
+        "Mean patient-level fate after repeated rarefaction\nSelected T1 threshold: 0.10%",
+        "_median", age_groups=age_groups,
+    )
+    panel_label(axes[0], "A"); panel_label(axes[1], "B")
+    fig.suptitle(f"Primary sampling-controlled analysis: {cohort_label}",
+                 fontsize=15, fontweight="bold", color=COLORS["ink"])
+    fig.savefig(base / "rarefied" / "01_shared_and_fate.png", bbox_inches="tight")
+    plt.close(fig)
+
+    sampling_and_sensitivity_plot(base / "rarefied" / "02_sampling_and_sensitivity.png",
+                                  age_group, cohort_label)
+    dumbbell_and_trbv(
+        "rarefied", "T1_fraction_rarefied_median", "T2_fraction_rarefied_median",
+        "rarefied_direction_0_10_percent",
+        base / "rarefied" / "03_candidate_dumbbell_and_trbv.png", age_group,
+    )
+    subgroup_master = master[master.age_group.eq(age_group)].copy()
+    subgroup_enrichment = pd.concat([
+        enrichment_for_branch(subgroup_master, "pairwise_rarefied"),
+        enrichment_for_branch(subgroup_master, "simpson_no_downsampling"),
+    ], ignore_index=True, sort=False)
+    enrichment_plot("pairwise_rarefied", base / "rarefied" / "04_enrichment_and_specificity.png",
+                    subgroup_enrichment, cohort_label)
+
+    simpson_and_fate(base / "simpson_raw" / "01_simpson_metrics_and_fate.png",
+                     age_groups, cohort_label)
+    branch_comparison_plot(base / "simpson_raw" / "02_shared_and_sensitivity.png",
+                           age_group, cohort_label)
+    dumbbell_and_trbv(
+        "raw", "T1_fraction", "T2_fraction", "raw_direction_0_10_percent",
+        base / "simpson_raw" / "03_candidate_dumbbell_and_trbv.png", age_group,
+    )
+    enrichment_plot("simpson_no_downsampling", base / "simpson_raw" / "04_enrichment_and_specificity.png",
+                    subgroup_enrichment, cohort_label)
+    concordance_plot(base / "validation" / "02_branch_concordance.png", age_group, cohort_label)
+    threshold_selection_plot(base / "validation" / "03_threshold_selection.png", age_group, cohort_label)
+    iteration_convergence_plot(base / "validation" / "04_downsampling_iterations.png", age_group, cohort_label)
 
 (FIG / "FIGURE_INDEX.txt").write_text("\n".join([
     "FINAL FIGURE SET", "",
-    "patients: one panel per accepted longitudinal patient comparison",
+    "patients: combined index of one panel per accepted longitudinal patient comparison",
+    "adults/: adult-only copies of every analysis and patient panel",
+    "children/: child-only copies of every analysis and patient panel",
     "rarefied/01_shared_and_fate.png: labelled shared clones and mean patient-level fate by age",
     "rarefied/02_sampling_and_sensitivity.png: expected-versus-observed detection and complete threshold grid",
     "rarefied/03_candidate_dumbbell_and_trbv.png: paired top-5 increased, stable and decreased blocks",
     "rarefied/04_enrichment_and_specificity.png: patient-clustered GEE feature enrichment only",
-    "simpson_raw/01_simpson_metrics_and_fate.png: three distinct no-downsampling metrics and raw fate",
+    "simpson_raw/01_simpson_metrics_and_fate.png: non-redundant Simpson D and raw fate",
     "simpson_raw/02_shared_and_sensitivity.png: comparison with the primary rarefaction branch",
     "simpson_raw/03_candidate_dumbbell_and_trbv.png: observed-frequency candidate blocks and TRBV context",
     "simpson_raw/04_enrichment_and_specificity.png: observed-frequency GEE enrichment only",
     "validation/01_identity_T3_batch.png: identity, T3 and batch validation if available",
     "validation/02_branch_concordance.png: rows rarefaction, columns observed frequency",
     "validation/03_threshold_selection.png: evidence and rationale for the 0.10% threshold",
-    "validation/04_downsampling_iterations.png: Monte Carlo convergence across iterations", "",
+    "validation/04_downsampling_iterations.png: running mean and 95% Monte Carlo CI", "",
     "Primary clone key: CDR3 nucleotide + TRBV + TRBJ",
     "Primary expansion threshold: 0.10 percent",
     "Sensitivity grid: 0.05, 0.10, then 0.20 to 1.50 percent",

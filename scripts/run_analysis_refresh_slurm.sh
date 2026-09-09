@@ -41,7 +41,7 @@ echo "Functional/public clone key: CDR3 amino acid + TRBV + TRBJ"
 echo "Primary T1 expanded threshold: 0.10 percent"
 echo "Final sensitivity thresholds: 0.05 0.10 and 0.20 to 1.50 percent in 0.10 percentage-point steps"
 echo "Primary branch: pair-specific repeated rarefaction with ${PAIR_ITERATIONS} iterations"
-echo "Complementary branch: no downsampling, article-style Simpson D and sqrt Simpson D"
+echo "Complementary branch: no downsampling, Simpson D summary and observed clone frequencies"
 echo "Completed MiXCR exports are reused"
 
 python scripts/validate_repository.py
@@ -66,6 +66,7 @@ rm -rf \
   figures/current figures/group figures/main figures/patients \
   figures/downsampling_pairwise figures/sensitivity_thresholds \
   figures/supplementary figures/rarefied figures/simpson_raw figures/validation
+rm -rf figures/adults figures/children
 rm -f results/expanded_threshold_sensitivity_extended.csv
 mkdir -p results/current figures/current
 
@@ -186,6 +187,20 @@ required_figs = [
     'figures/validation/03_threshold_selection.png',
     'figures/validation/04_downsampling_iterations.png',
 ]
+for cohort in ['adults', 'children']:
+    required_figs.extend([
+        f'figures/{cohort}/rarefied/01_shared_and_fate.png',
+        f'figures/{cohort}/rarefied/02_sampling_and_sensitivity.png',
+        f'figures/{cohort}/rarefied/03_candidate_dumbbell_and_trbv.png',
+        f'figures/{cohort}/rarefied/04_enrichment_and_specificity.png',
+        f'figures/{cohort}/simpson_raw/01_simpson_metrics_and_fate.png',
+        f'figures/{cohort}/simpson_raw/02_shared_and_sensitivity.png',
+        f'figures/{cohort}/simpson_raw/03_candidate_dumbbell_and_trbv.png',
+        f'figures/{cohort}/simpson_raw/04_enrichment_and_specificity.png',
+        f'figures/{cohort}/validation/02_branch_concordance.png',
+        f'figures/{cohort}/validation/03_threshold_selection.png',
+        f'figures/{cohort}/validation/04_downsampling_iterations.png',
+    ])
 for f in required_figs:
     p=Path(f)
     if not p.exists() or p.stat().st_size == 0:
@@ -203,6 +218,8 @@ echo "Patient Venn panels: $ROOT/figures/patients"
 echo "Primary rarefied branch: $ROOT/figures/rarefied"
 echo "No-downsampling Simpson branch: $ROOT/figures/simpson_raw"
 echo "Validation: $ROOT/figures/validation"
+echo "Adult-only figures: $ROOT/figures/adults"
+echo "Child-only figures: $ROOT/figures/children"
 echo "Specification table: $ROOT/results/final/candidate_clones.csv"
 echo "Supporting tables: $ROOT/results/supplementary_tables"
 echo "Reusable computational caches: $ROOT/results/cache"

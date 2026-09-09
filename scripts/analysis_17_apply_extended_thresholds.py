@@ -34,5 +34,16 @@ for path in [
     if not path.exists() or path.stat().st_size == 0:
         raise FileNotFoundError(path)
 
+for cohort in ["adults", "children"]:
+    for relative in [
+        "rarefied/02_sampling_and_sensitivity.png",
+        "simpson_raw/02_shared_and_sensitivity.png",
+        "validation/03_threshold_selection.png",
+        "validation/04_downsampling_iterations.png",
+    ]:
+        path = FIG / cohort / relative
+        if not path.exists() or path.stat().st_size == 0:
+            raise FileNotFoundError(path)
+
 print("Published threshold and iteration outputs validated")
 print("Thresholds percent:", THRESHOLD_PCT)

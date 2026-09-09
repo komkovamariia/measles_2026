@@ -97,7 +97,7 @@ Final optional run:
 export MEASLES_RAREFACTION_ITERATIONS=1000
 ```
 
-The internal T1 null produces empirical `P_detection_if_unchanged`. A T1-expanded clone absent from real T2 despite very high expected detectability is a sampling-robust loss candidate.
+The internal T1 null calculates exact same-depth `P_detection_if_unchanged` after each rarefied T1 draw and averages these probabilities across iterations. It does not add a second Bernoulli simulation. A T1-expanded clone absent from real T2 despite very high expected detectability is a sampling-robust loss candidate.
 
 No pseudocount is introduced for T2 zero values.
 
@@ -112,7 +112,7 @@ The final rarefied branch then shows:
 3. top increased, stable and decreased nonzero candidate clonotypes with TRBV labels
 4. patient-clustered TRBV/TRBJ/CDR3 enrichment with the method stated in the title
 
-The no-downsampling Simpson branch repeats the same biological logic while adding Simpson D, Simpson clonality and normalized richness.
+The no-downsampling branch repeats the same biological logic. Its main figure shows Simpson D only; the monotonic square-root transform and normalized richness remain in the supplementary patient table.
 
 Validation keeps identity QC, available T3 checks, GA1_003 cross-batch sensitivity, explicit branch concordance, the 0.10 percent threshold choice and rarefaction convergence across iterations.
 
@@ -122,6 +122,16 @@ After a successful job the temporary directories `results/current` and `figures/
 
 ```text
 figures/
+  adults/
+    patients/
+    rarefied/
+    simpson_raw/
+    validation/
+  children/
+    patients/
+    rarefied/
+    simpson_raw/
+    validation/
   patients/
   rarefied/
   simpson_raw/

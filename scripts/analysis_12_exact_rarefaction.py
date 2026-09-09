@@ -152,7 +152,7 @@ for patient in paired:
         key_indices.append(key_to_i[key])
     key_indices = np.asarray(key_indices, dtype=int)
 
-    null_detect_hits = np.zeros(len(master_indices), dtype=np.int64)
+    null_detection_probability_sum = np.zeros(len(master_indices), dtype=float)
     observed_t2_detect_hits = np.zeros(len(master_indices), dtype=np.int64)
     rare_t1_store = np.zeros((N_ITER, len(master_indices)), dtype=np.float32)
     rare_t2_store = np.zeros((N_ITER, len(master_indices)), dtype=np.float32)
@@ -170,7 +170,9 @@ for patient in paired:
         observed_t2_detect_hits += (f2[key_indices] > 0).astype(np.int64)
 
         p_null = 1.0 - np.power(1.0 - np.clip(f1[key_indices], 0.0, 1.0), null_total_reads)
-        null_detect_hits += (rng.random(len(p_null)) < p_null).astype(np.int64)
+        # Exact conditional probability, not an additional Bernoulli draw. The
+        # only Monte Carlo variation now comes from the rarefied T1 frequency.
+        null_detection_probability_sum += p_null
 
         r1, h1, c1, s1 = repertoire_metrics(f1)
         r2, h2, c2, s2 = repertoire_metrics(f2)
@@ -274,7 +276,7 @@ for patient in paired:
             row[f"{name}_q975"] = hi
         threshold_rows.append(row)
 
-    empirical_p = null_detect_hits / float(N_ITER)
+    empirical_p = null_detection_probability_sum / float(N_ITER)
     observed_detect_p = observed_t2_detect_hits / float(N_ITER)
     t1_median = np.median(rare_t1_store, axis=0)
     t2_median = np.median(rare_t2_store, axis=0)
@@ -352,8 +354,8 @@ master.to_csv(master_path, index=False)
         f"Seed: {SEED}",
         "Observed libraries: NumPy multivariate hypergeometric sampling without replacement",
         "Biological replicate libraries: rarefied separately, converted to frequencies, then averaged within a time point",
-        "Internal null: after each T1 rarefaction, clone detection in a same-depth pseudo-T2 is simulated as the exact Bernoulli detection event implied by the T1 frequency and T2 sampling effort",
-        "P_detection_if_unchanged is the empirical null detection fraction across iterations",
+        "Internal null: after each T1 rarefaction, exact clone-detection probability at the same T2 sampling effort is calculated from the rarefied T1 frequency",
+        "P_detection_if_unchanged is the mean exact conditional detection probability across T1 rarefactions; no extra Bernoulli noise is added",
         "Analytical raw-depth probability is retained separately in P_detection_if_unchanged_analytic_raw_depth",
         "Threshold sensitivity: 0.05, 0.10, then 0.20 to 1.50 percent in 0.10 percentage-point steps",
         "This controls sequencing read depth only and cannot remove PCR amplification bias because UMI are absent",
