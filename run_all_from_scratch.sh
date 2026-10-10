@@ -65,6 +65,7 @@ python scripts/validate_repository.py
 python - <<'PY'
 from pathlib import Path
 import requests
+
 p = Path("resources/IEDB_data.tsv")
 if not p.exists() or p.stat().st_size < 100:
     url = "https://raw.githubusercontent.com/IEDB/TCRMatch/master/data/IEDB_data.tsv"

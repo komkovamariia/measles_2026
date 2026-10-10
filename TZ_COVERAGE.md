@@ -25,7 +25,7 @@ This checklist maps the 7 September 2026 specification to the reproducible pipel
 
 ## Recommended additional figures
 
-Only two additions would materially improve the paper without duplicating the current panels.
+Two additional figures are proposed for the paper.
 
 1. Patient-level forest plot of T1-expanded mass not detected at T2. Show one estimate and the 2.5–97.5% rarefaction interval per patient, sorted within adults and children. This would expose heterogeneity, identify influential patients and keep the patient as the biological unit.
 2. Compact candidate-evidence plot for the strongest contracted or lost clones. Combine T1 and T2 fraction, fold contraction or its lower bound, same-depth detection probability, specificity class and available T3 fate. This would connect statistical evidence to the final candidate table more directly than another repertoire-wide summary.

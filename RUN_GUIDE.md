@@ -1,6 +1,6 @@
 # Analysis run guide
 
-## Current contract
+## Analysis settings
 
 - metadata: `config/analysis_metadata.csv`
 - library QC: at least 4400 productive TRB clonotypes
@@ -9,7 +9,7 @@
 - controls: `CONTROL` only
 - paired T1-T2 cohort: 22 patients, 6 children and 16 adults
 - physical clone key: CDR3 nucleotide + TRBV + TRBJ
-- functional/public key: CDR3 amino acid + TRBV + TRBJ
+- functional and public key: CDR3 amino acid + TRBV + TRBJ
 - primary expanded threshold: 0.10 percent
 - final sensitivity thresholds: 0.05, 0.10, then 0.20 through 1.50 percent in 0.10 percentage-point steps
 
@@ -33,9 +33,9 @@ analysis_15_tz_final_reporting.py
 analysis_17_apply_extended_thresholds.py
 ```
 
-The first established scripts are retained to build metadata, patient Venn panels and reproducible intermediate quantities. Their exploratory figures are temporary and are deleted from the finished tree.
+The preparation and early reporting scripts build metadata, patient Venn panels and intermediate quantities. The final reporting step removes their temporary exploratory figures.
 
-`analysis_10_clone_fate_v2.py` builds the one-row-per-T1-nucleotide-clonotype master scaffolding.
+`analysis_10_clone_fate_v2.py` builds the master table with one row per T1 nucleotide clonotype.
 
 `analysis_12_exact_rarefaction.py` is the primary sampling-controlled branch. Each patient pair is repeatedly rarefied to that pair's own minimum accepted T1/T2 library depth. At least 500 iterations are required. The complete threshold grid is evaluated inside these same rarefaction iterations, so the expensive sampling is not repeated separately for each threshold.
 
@@ -49,30 +49,11 @@ Simpson clonality = sqrt(Simpson D)
 normalized richness = unique productive clonotypes / productive TRB reads
 ```
 
-Both analytical branches use the same exact expansion grid:
+Both branches use the expansion grid above: 0.05%, 0.10% and 0.20% through 1.50% in steps of 0.10 percentage points.
 
-```text
-0.05
-0.10
-0.20
-0.30
-0.40
-0.50
-0.60
-0.70
-0.80
-0.90
-1.00
-1.10
-1.20
-1.30
-1.40
-1.50 percent
-```
+`analysis_16_extended_thresholds.py` validates and combines the completed threshold tables from both branches. It reuses those tables without repeating rarefaction.
 
-`analysis_16_extended_thresholds.py` is now only a lightweight validator and consolidator. It combines the already computed full-grid outputs from the rarefied and no-downsampling branches and does not run an additional rarefaction loop.
-
-`analysis_15_tz_final_reporting.py` curates the final tree, creates the complete threshold and iteration figures, and moves supporting tables out of the main result folder. `analysis_17_apply_extended_thresholds.py` validates the published grid and figures without redrawing them.
+`analysis_15_tz_final_reporting.py` exports the final tables and figures, including threshold sensitivity and iteration convergence. It moves supporting tables to the supplementary directory. `analysis_17_apply_extended_thresholds.py` checks the published grid and figures without redrawing them.
 
 ## Pair-specific rarefaction
 
@@ -84,19 +65,17 @@ pair_depth_i = minimum productive-read depth among all accepted T1 and T2 librar
 
 Every contributing library is sampled without replacement to `pair_depth_i` using multivariate hypergeometric sampling.
 
-Each iteration draws a new random subset of reads. Therefore low-frequency and near-threshold clones can change their sampled count, normalized frequency, detected/not-detected status, expanded status, fate category and membership in the T1/T2 overlap. The underlying input libraries do not change.
+Each iteration draws a new random subset of reads. Rare and near-threshold clones can change their sampled count, frequency, detection, expansion status, fate and membership in the T1 and T2 overlap. The input libraries stay fixed.
 
-The repetition is needed because one downsample is an arbitrary random realization. Five hundred iterations are sufficient here to estimate stable patient medians and 2.5–97.5% sampling intervals while keeping the run practical. The fixed seed makes the full calculation reproducible; 1,000 iterations remain available as a final sensitivity run.
+Repeated draws estimate patient medians and 2.5–97.5% sampling intervals. The default is 500 iterations with seed 1031. Use the convergence figure to assess Monte Carlo precision; 1,000 iterations are available for a sensitivity run.
 
-Expanded-set Jaccard is:
+For expanded sets $E_{T1}$ and $E_{T2}$, Jaccard is:
 
-```text
-number of expanded clones shared by T1 and T2
-------------------------------------------------
-number of expanded clones present in T1 or T2
-```
+$$
+J = \frac{|E_{T1} \cap E_{T2}|}{|E_{T1} \cup E_{T2}|}.
+$$
 
-Jaccard is used because the comparison concerns two clone sets, not only their sizes. It is symmetric, bounded between 0 and 1, and decreases both when a T1-expanded clone is lost and when a new T2-expanded clone appears. The primary 0.10% expanded Jaccard is less dominated by the unstable rare-clone tail than complete-repertoire Jaccard. Jaccard does not use abundance inside the selected set, so the convergence figure also retains T1 mass not detected at T2 as the abundance-weighted biological result.
+Jaccard compares clone membership. Its range is 0 to 1: zero means no shared clones and one means identical sets. Loss of a T1-expanded clone and appearance of a new T2-expanded clone both reduce the score. The 0.10% threshold reduces the contribution of unstable rare clones. T1 mass not detected at T2 is reported alongside Jaccard because it also accounts for abundance.
 
 Default:
 
@@ -124,9 +103,9 @@ decreased     T2/T1 <= 0.5 and the clone is still detected at T2
 not detected  zero observed T2 reads
 ```
 
-The enrichment comparison uses a narrower endpoint. `contracted/lost` means either at least five-fold contraction or zero T2 reads despite same-depth expected detection probability at least 0.99. `retained` means detected at T2 at or above the selected 0.10% threshold.
+The enrichment endpoint is narrower than the direction classification. Contracted or lost clones have at least five-fold contraction or zero T2 reads despite expected same-depth detection probability at least 0.99. Retained clones are detected at T2 at or above 0.10% and are outside the affected group.
 
-## Presentation logic
+## Figures
 
 Patient Venn panels are retained as the first layer.
 
@@ -135,13 +114,13 @@ The final rarefied branch then shows:
 1. changes in representation inside the shared T1-expanded segment and overall T1 clone fate
 2. sampling robustness and threshold sensitivity across 0.05 to 1.50 percent
 3. top increased, stable and decreased nonzero candidate clonotypes with TRBV labels
-4. patient-clustered TRBV/TRBJ/CDR3 enrichment with the method stated in the title
+4. patient-clustered enrichment of TRBV, TRBJ and CDR3 motifs with the method stated in the figure
 
 The no-downsampling branch repeats the same biological logic. Its main figure shows Simpson D only; the monotonic square-root transform and normalized richness remain in the supplementary patient table.
 
 Validation keeps identity QC, available T3 checks, GA1_003 cross-batch sensitivity, explicit branch concordance, the 0.10 percent threshold choice and rarefaction convergence across iterations.
 
-## Final filesystem
+## Output directories
 
 After a successful job the temporary directories `results/current` and `figures/current` do not exist.
 

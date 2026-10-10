@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Validate the published full threshold grid without redrawing figures."""
+
 from pathlib import Path
 import os
 import pandas as pd
 
-ROOT = Path(os.environ.get("MEASLES_REPO", Path(__file__).resolve().parents[1])).resolve()
+ROOT = Path(
+    os.environ.get("MEASLES_REPO", Path(__file__).resolve().parents[1])
+).resolve()
 RESULTS = ROOT / "results"
 FINAL = RESULTS / "final"
 SUPP = RESULTS / "supplementary_tables"
@@ -23,7 +26,9 @@ if observed != set(THRESHOLD_PCT):
     raise RuntimeError(f"Unexpected extended threshold set: {sorted(observed)}")
 coverage = sens.groupby(["branch", "threshold_percent"]).patient.nunique()
 if (coverage != 22).any():
-    raise RuntimeError(f"Incomplete branch-threshold coverage: {coverage[coverage != 22].to_dict()}")
+    raise RuntimeError(
+        f"Incomplete branch-threshold coverage: {coverage[coverage != 22].to_dict()}"
+    )
 
 for path in [
     FIG / "rarefied" / "02_sampling_and_sensitivity.png",

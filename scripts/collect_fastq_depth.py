@@ -7,6 +7,7 @@ only R1 files are decompressed for counting. raw_reads_total is reported as two
 reads per pair (R1 + R2). This is an input-depth QC metric and is distinct from
 productive_trb_reads after MiXCR.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,7 +27,9 @@ def fastq_records(path: Path) -> int:
         for _ in fh:
             lines += 1
     if lines % 4:
-        raise RuntimeError(f"FASTQ line count is not divisible by 4: {path} ({lines} lines)")
+        raise RuntimeError(
+            f"FASTQ line count is not divisible by 4: {path} ({lines} lines)"
+        )
     return lines // 4
 
 
@@ -73,7 +76,9 @@ def main() -> None:
     path = RESULTS / "raw_fastq_depth.csv"
     out.to_csv(path, index=False)
     print(f"Wrote {path}")
-    print("Libraries with raw read counts:", int(out.status.eq("ok").sum()), "/", len(out))
+    print(
+        "Libraries with raw read counts:", int(out.status.eq("ok").sum()), "/", len(out)
+    )
 
 
 if __name__ == "__main__":

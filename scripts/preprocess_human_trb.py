@@ -13,10 +13,12 @@ import pandas as pd
 ROOT = Path(os.environ.get("MEASLES_REPO", Path.cwd())).resolve()
 MANIFEST = ROOT / "config" / "sample_manifest.csv"
 KNOWN_ISSUES = ROOT / "config" / "metadata_known_issues.csv"
-NEW_DIR = Path(os.environ.get(
-    "MEASLES_NEW_FASTQ_DIR",
-    "/projects/mice_transplant_2025/raw/20260817_161454/Fastq",
-)).expanduser()
+NEW_DIR = Path(
+    os.environ.get(
+        "MEASLES_NEW_FASTQ_DIR",
+        "/projects/mice_transplant_2025/raw/20260817_161454/Fastq",
+    )
+).expanduser()
 legacy_value = os.environ.get("MEASLES_LEGACY_FASTQ_DIR", "").strip()
 LEGACY_DIR = Path(legacy_value).expanduser() if legacy_value else None
 PRESET = os.environ.get("MEASLES_MIXCR_PRESET", "milab-human-dna-tcr-multiplex")
@@ -61,29 +63,41 @@ MIXCR_BIN = resolve_mixcr()
 manifest = pd.read_csv(MANIFEST)
 for col in ["include", "is_control"]:
     manifest[col] = manifest[col].astype(str).str.lower().isin(["true", "1", "yes"])
-manifest["analysis_timepoint"] = pd.to_numeric(manifest["analysis_timepoint"], errors="coerce")
+manifest["analysis_timepoint"] = pd.to_numeric(
+    manifest["analysis_timepoint"], errors="coerce"
+)
 
 issues = pd.read_csv(KNOWN_ISSUES)
 auto_issues: list[dict] = []
 
-dup_mask = manifest.duplicated(["patient_id", "analysis_timepoint", "batch"], keep=False)
+dup_mask = manifest.duplicated(
+    ["patient_id", "analysis_timepoint", "batch"], keep=False
+)
 for _, r in manifest[dup_mask].iterrows():
-    auto_issues.append({
-        "library_id": r.library_id,
-        "raw_sample_id": r.raw_sample_id,
-        "issue": "duplicate_patient_timepoint",
-        "note": "Multiple libraries map to the same patient/timepoint; retained for library QC and aggregated for biological analysis.",
-    })
+    auto_issues.append(
+        {
+            "library_id": r.library_id,
+            "raw_sample_id": r.raw_sample_id,
+            "issue": "duplicate_patient_timepoint",
+            "note": "Multiple libraries map to the same patient/timepoint; retained for library QC and aggregated for biological analysis.",
+        }
+    )
 for _, r in manifest[manifest.age_group.eq("unknown")].iterrows():
-    auto_issues.append({
-        "library_id": r.library_id,
-        "raw_sample_id": r.raw_sample_id,
-        "issue": "unknown_age",
-        "note": "Patient is absent from the current child/adult lists; retained and excluded from age-stratified inference.",
-    })
+    auto_issues.append(
+        {
+            "library_id": r.library_id,
+            "raw_sample_id": r.raw_sample_id,
+            "issue": "unknown_age",
+            "note": "Patient is absent from the current child/adult lists; retained and excluded from age-stratified inference.",
+        }
+    )
 
-NEW_RE = re.compile(r"^(?P<idx>\d+)_S\d+_L(?P<lane>\d{3})_R(?P<read>[12])_001\.fastq\.gz$")
-expected_new = set(manifest.loc[manifest.batch.eq("new"), "sequencing_index"].astype(str))
+NEW_RE = re.compile(
+    r"^(?P<idx>\d+)_S\d+_L(?P<lane>\d{3})_R(?P<read>[12])_001\.fastq\.gz$"
+)
+expected_new = set(
+    manifest.loc[manifest.batch.eq("new"), "sequencing_index"].astype(str)
+)
 observed_by_index: dict[str, dict[tuple[str, str], Path]] = {}
 unexpected_files: list[str] = []
 if NEW_DIR.exists():
@@ -97,12 +111,14 @@ if NEW_DIR.exists():
         if idx not in expected_new:
             unexpected_files.append(path.name)
 else:
-    auto_issues.append({
-        "library_id": "NEW_BATCH",
-        "raw_sample_id": str(NEW_DIR),
-        "issue": "missing_new_fastq_directory",
-        "note": "Configured new FASTQ directory does not exist.",
-    })
+    auto_issues.append(
+        {
+            "library_id": "NEW_BATCH",
+            "raw_sample_id": str(NEW_DIR),
+            "issue": "missing_new_fastq_directory",
+            "note": "Configured new FASTQ directory does not exist.",
+        }
+    )
 
 
 def discover_new(index) -> tuple[list[tuple[Path, Path]], list[str]]:
@@ -171,49 +187,73 @@ for _, r in manifest.iterrows():
         ready = len(pairs) >= 1
         missing_text = "" if ready else "legacy_read1_read2_pair"
 
-    fastq_audit_rows.append({
-        "library_id": r.library_id,
-        "sequencing_index": r.sequencing_index,
-        "batch": r.batch,
-        "n_complete_pairs": len(pairs),
-        "missing": missing_text,
-        "fastq_ready": ready,
-    })
+    fastq_audit_rows.append(
+        {
+            "library_id": r.library_id,
+            "sequencing_index": r.sequencing_index,
+            "batch": r.batch,
+            "n_complete_pairs": len(pairs),
+            "missing": missing_text,
+            "fastq_ready": ready,
+        }
+    )
 
     if not ready:
-        auto_issues.append({
-            "library_id": r.library_id,
-            "raw_sample_id": r.raw_sample_id,
-            "issue": "incomplete_new_fastq" if r.batch == "new" else "missing_legacy_fastq",
-            "note": (
-                f"Expected four paired lanes L001-L004; complete_pairs={len(pairs)}; missing={missing_text}"
-                if r.batch == "new"
-                else "No complete old _1/_2 or R1/R2 pair was found in MEASLES_LEGACY_FASTQ_DIR."
-            ),
-        })
+        auto_issues.append(
+            {
+                "library_id": r.library_id,
+                "raw_sample_id": r.raw_sample_id,
+                "issue": (
+                    "incomplete_new_fastq"
+                    if r.batch == "new"
+                    else "missing_legacy_fastq"
+                ),
+                "note": (
+                    f"Expected four paired lanes L001-L004; complete_pairs={len(pairs)}; missing={missing_text}"
+                    if r.batch == "new"
+                    else "No complete old _1/_2 or R1/R2 pair was found in MEASLES_LEGACY_FASTQ_DIR."
+                ),
+            }
+        )
     else:
         link_pairs(r.library_id, pairs)
 
-    resolved_rows.append({**r.to_dict(), "fastq_ready": ready, "n_fastq_pairs": len(pairs)})
+    resolved_rows.append(
+        {**r.to_dict(), "fastq_ready": ready, "n_fastq_pairs": len(pairs)}
+    )
 
 for name in unexpected_files:
-    auto_issues.append({
-        "library_id": "UNEXPECTED_FASTQ",
-        "raw_sample_id": name,
-        "issue": "unexpected_fastq",
-        "note": "FASTQ is outside the current 96-record study manifest or has an unexpected filename.",
-    })
+    auto_issues.append(
+        {
+            "library_id": "UNEXPECTED_FASTQ",
+            "raw_sample_id": name,
+            "issue": "unexpected_fastq",
+            "note": "FASTQ is outside the current 96-record study manifest or has an unexpected filename.",
+        }
+    )
 
 resolved = pd.DataFrame(resolved_rows)
 fastq_audit = pd.DataFrame(fastq_audit_rows)
-all_issues = pd.concat([issues, pd.DataFrame(auto_issues)], ignore_index=True).drop_duplicates()
+all_issues = pd.concat(
+    [issues, pd.DataFrame(auto_issues)], ignore_index=True
+).drop_duplicates()
 resolved.to_csv(RESULTS / "sample_manifest_resolved.csv", index=False)
 fastq_audit.to_csv(RESULTS / "fastq_audit.csv", index=False)
 all_issues.to_csv(RESULTS / "metadata_issues.csv", index=False)
 
 print("Libraries in manifest:", len(resolved))
-print("New FASTQ-ready:", int(resolved.loc[resolved.batch.eq("new"), "fastq_ready"].sum()), "/", int(resolved.batch.eq("new").sum()))
-print("Legacy FASTQ-ready:", int(resolved.loc[resolved.batch.eq("legacy"), "fastq_ready"].sum()), "/", int(resolved.batch.eq("legacy").sum()))
+print(
+    "New FASTQ-ready:",
+    int(resolved.loc[resolved.batch.eq("new"), "fastq_ready"].sum()),
+    "/",
+    int(resolved.batch.eq("new").sum()),
+)
+print(
+    "Legacy FASTQ-ready:",
+    int(resolved.loc[resolved.batch.eq("legacy"), "fastq_ready"].sum()),
+    "/",
+    int(resolved.batch.eq("legacy").sum()),
+)
 print("Unexpected FASTQ files:", len(unexpected_files))
 
 if REQUIRE_ALL:
@@ -226,7 +266,9 @@ if REQUIRE_ALL:
         )
 
 version = subprocess.run([MIXCR_BIN, "-v"], capture_output=True, text=True, check=True)
-(RESULTS / "mixcr_version.txt").write_text(version.stdout + version.stderr, encoding="utf-8")
+(RESULTS / "mixcr_version.txt").write_text(
+    version.stdout + version.stderr, encoding="utf-8"
+)
 print("MiXCR binary:", MIXCR_BIN)
 print((version.stdout or version.stderr).splitlines()[0])
 print("MiXCR preset:", PRESET)
@@ -252,7 +294,9 @@ def exported_table_is_valid(path: Path) -> bool:
 def log_tail(path: Path, n: int = 60) -> str:
     if not path.exists():
         return "<log file was not created>"
-    return "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-n:])
+    return "\n".join(
+        path.read_text(encoding="utf-8", errors="replace").splitlines()[-n:]
+    )
 
 
 def run_mixcr(row):
@@ -272,7 +316,8 @@ def run_mixcr(row):
         "analyze",
         PRESET,
         "-f",
-        "--threads", str(THREADS_PER_SAMPLE),
+        "--threads",
+        str(THREADS_PER_SAMPLE),
         r1_pattern,
         r2_pattern,
         str(prefix),
@@ -296,7 +341,8 @@ def run_mixcr(row):
         f"-Xmx{MIXCR_MEMORY_GB}g",
         "exportClones",
         "--dont-split-files",
-        "--chains", "TRB",
+        "--chains",
+        "TRB",
         "--filter-out-of-frames",
         "--filter-stops",
         str(clns),
@@ -304,14 +350,18 @@ def run_mixcr(row):
     ]
     with log_file.open("a", encoding="utf-8") as log:
         log.write("\nCOMMAND: " + " ".join(export_cmd) + "\n")
-        proc = subprocess.run(export_cmd, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
+        proc = subprocess.run(
+            export_cmd, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT
+        )
     if proc.returncode != 0:
         raise RuntimeError(
             f"{lib}: MiXCR exportClones failed with exit code {proc.returncode}. "
             f"Last lines of {log_file}:\n{log_tail(log_file)}"
         )
     if not exported_table_is_valid(final_tsv):
-        raise RuntimeError(f"MiXCR export for {lib} is missing required CDR3/count columns.")
+        raise RuntimeError(
+            f"MiXCR export for {lib} is missing required CDR3/count columns."
+        )
     return lib, "done"
 
 
@@ -323,7 +373,10 @@ print(
 print("Libraries selected for MiXCR:", len(run_table))
 statuses = {}
 with ThreadPoolExecutor(max_workers=max_workers) as pool:
-    futures = {pool.submit(run_mixcr, row): row.library_id for row in run_table.itertuples(index=False)}
+    futures = {
+        pool.submit(run_mixcr, row): row.library_id
+        for row in run_table.itertuples(index=False)
+    }
     for future in as_completed(futures):
         lib = futures[future]
         try:
@@ -333,14 +386,14 @@ with ThreadPoolExecutor(max_workers=max_workers) as pool:
         except Exception as exc:
             statuses[lib] = f"FAILED: {exc}"
             print(statuses[lib])
-            pd.DataFrame([
-                {"library_id": k, "mixcr_status": v} for k, v in statuses.items()
-            ]).to_csv(RESULTS / "mixcr_run_status.csv", index=False)
+            pd.DataFrame(
+                [{"library_id": k, "mixcr_status": v} for k, v in statuses.items()]
+            ).to_csv(RESULTS / "mixcr_run_status.csv", index=False)
             raise
 
-pd.DataFrame([
-    {"library_id": k, "mixcr_status": v} for k, v in statuses.items()
-]).to_csv(RESULTS / "mixcr_run_status.csv", index=False)
+pd.DataFrame(
+    [{"library_id": k, "mixcr_status": v} for k, v in statuses.items()]
+).to_csv(RESULTS / "mixcr_run_status.csv", index=False)
 
 
 def pick_col(df, candidates):
@@ -366,15 +419,17 @@ for _, r in resolved.iterrows():
         largest = float(frac.max()) if len(frac) else np.nan
     else:
         largest = float(counts.max() / total) if total > 0 and len(counts) else np.nan
-    qc_rows.append({
-        "library_id": r.library_id,
-        "patient_id": r.patient_id,
-        "analysis_timepoint": r.analysis_timepoint,
-        "batch": r.batch,
-        "productive_trb_reads": int(round(total)),
-        "productive_trb_clonotypes": int(df[aa_col].notna().sum()),
-        "largest_clone_fraction": largest,
-    })
+    qc_rows.append(
+        {
+            "library_id": r.library_id,
+            "patient_id": r.patient_id,
+            "analysis_timepoint": r.analysis_timepoint,
+            "batch": r.batch,
+            "productive_trb_reads": int(round(total)),
+            "productive_trb_clonotypes": int(df[aa_col].notna().sum()),
+            "largest_clone_fraction": largest,
+        }
+    )
 
 qc = pd.DataFrame(qc_rows)
 qc.to_csv(RESULTS / "sample_qc.csv", index=False)

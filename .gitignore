@@ -15,10 +15,12 @@ results/clonotypes/
 # Runtime/cache
 work/
 logs/*.log
+logs/*.out
+logs/*.err
 audit_runs/*.executed.ipynb
 resources/IEDB_data.tsv
 .ipynb_checkpoints/
 __pycache__/
 *.pyc
 
-# Small summary CSV files and figures remain visible to Git if the user wants to commit them.
+# Summary tables and figures can be tracked separately.

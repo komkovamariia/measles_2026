@@ -1,6 +1,6 @@
 # Antigen reference
 
-`01_measles_analysis.ipynb` downloads the official IEDB TCRMatch table on the first run and stores it locally as:
+The antigen annotation step downloads the official [IEDB TCRMatch table](https://github.com/IEDB/TCRMatch/blob/master/data/IEDB_data.tsv) on the first run and stores it at:
 
 ```text
 resources/IEDB_data.tsv

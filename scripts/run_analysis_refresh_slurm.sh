@@ -90,47 +90,61 @@ python scripts/analysis_16_extended_thresholds.py
 python - <<'PY'
 import pandas as pd
 
-meta = pd.read_csv('results/current/sample_metadata_current.csv')
-meta['analysis_include_final'] = meta['analysis_include_final'].astype(str).str.lower().isin(['true','1','yes'])
-if meta['clinical_timepoint'].astype(str).eq('T0').any():
-    raise SystemExit('T0 was reintroduced downstream')
-controls = meta[meta['is_control'].astype(str).str.lower().isin(['true','1','yes'])]
-if not controls['clinical_timepoint'].eq('CONTROL').all():
-    raise SystemExit('A healthy control has a longitudinal time point')
+meta = pd.read_csv("results/current/sample_metadata_current.csv")
+meta["analysis_include_final"] = (
+    meta["analysis_include_final"].astype(str).str.lower().isin(["true", "1", "yes"])
+)
+if meta["clinical_timepoint"].astype(str).eq("T0").any():
+    raise SystemExit("T0 was reintroduced downstream")
+controls = meta[meta["is_control"].astype(str).str.lower().isin(["true", "1", "yes"])]
+if not controls["clinical_timepoint"].eq("CONTROL").all():
+    raise SystemExit("A healthy control has a longitudinal time point")
 
-master = pd.read_csv('results/current/paired_T1_clone_master_nt.csv')
+master = pd.read_csv("results/current/paired_T1_clone_master_nt.csv")
 if master.patient.nunique() != 22:
-    raise SystemExit(f'Expected 22 paired patients, found {master.patient.nunique()}')
+    raise SystemExit(f"Expected 22 paired patients, found {master.patient.nunique()}")
 required = {
-    'clone_id_nt','clone_id_aa','T1_fraction','T2_fraction','fate_0_10_percent',
-    'P_detection_if_unchanged_empirical','pair_rarefaction_depth',
-    'sampling_robust_not_detected','public_private','control_prevalence','motif_cluster','T3_fate'
+    "clone_id_nt",
+    "clone_id_aa",
+    "T1_fraction",
+    "T2_fraction",
+    "fate_0_10_percent",
+    "P_detection_if_unchanged_empirical",
+    "pair_rarefaction_depth",
+    "sampling_robust_not_detected",
+    "public_private",
+    "control_prevalence",
+    "motif_cluster",
+    "T3_fate",
 }
 missing = sorted(required - set(master.columns))
 if missing:
-    raise SystemExit(f'Master table is missing: {missing}')
+    raise SystemExit(f"Master table is missing: {missing}")
 
-rare = pd.read_csv('results/current/pairwise_rarefaction_summary.csv')
-if rare.patient.nunique() != 22 or (pd.to_numeric(rare.iterations, errors='coerce') < 500).any():
-    raise SystemExit('Pair-specific rarefaction is incomplete')
+rare = pd.read_csv("results/current/pairwise_rarefaction_summary.csv")
+if (
+    rare.patient.nunique() != 22
+    or (pd.to_numeric(rare.iterations, errors="coerce") < 500).any()
+):
+    raise SystemExit("Pair-specific rarefaction is incomplete")
 
-raw = pd.read_csv('results/current/simpson_raw_patient_metrics.csv')
-if raw.patient.nunique() != 22 or set(raw.timepoint.astype(str)) != {'T1','T2'}:
-    raise SystemExit('Simpson no-downsampling branch is incomplete')
-for c in ['simpson_D','simpson_clonality','normalized_richness']:
+raw = pd.read_csv("results/current/simpson_raw_patient_metrics.csv")
+if raw.patient.nunique() != 22 or set(raw.timepoint.astype(str)) != {"T1", "T2"}:
+    raise SystemExit("Simpson no-downsampling branch is incomplete")
+for c in ["simpson_D", "simpson_clonality", "normalized_richness"]:
     if c not in raw.columns:
-        raise SystemExit(f'Simpson branch is missing {c}')
+        raise SystemExit(f"Simpson branch is missing {c}")
 
-extended = pd.read_csv('results/expanded_threshold_sensitivity_extended.csv')
-expected = {0.05,0.10,*[round(x/10,2) for x in range(2,16)]}
+extended = pd.read_csv("results/expanded_threshold_sensitivity_extended.csv")
+expected = {0.05, 0.10, *[round(x / 10, 2) for x in range(2, 16)]}
 observed = {round(float(x), 8) for x in extended.threshold_percent.dropna().unique()}
 if observed != expected:
-    raise SystemExit(f'Unexpected final sensitivity thresholds: {sorted(observed)}')
-branch_counts = extended.groupby('branch').patient.nunique().to_dict()
-if branch_counts != {'pairwise_rarefied': 22, 'simpson_no_downsampling': 22}:
-    raise SystemExit(f'Extended threshold branches are incomplete: {branch_counts}')
+    raise SystemExit(f"Unexpected final sensitivity thresholds: {sorted(observed)}")
+branch_counts = extended.groupby("branch").patient.nunique().to_dict()
+if branch_counts != {"pairwise_rarefied": 22, "simpson_no_downsampling": 22}:
+    raise SystemExit(f"Extended threshold branches are incomplete: {branch_counts}")
 
-print('Pre-publication scientific contract passed')
+print("Pre-publication scientific contract passed")
 PY
 
 python scripts/analysis_15_tz_final_reporting.py
@@ -140,93 +154,108 @@ python - <<'PY'
 from pathlib import Path
 import pandas as pd
 
-if Path('results/current').exists():
-    raise SystemExit('Temporary results/current was not cleaned')
-if Path('figures/current').exists():
-    raise SystemExit('Temporary figures/current was not cleaned')
+if Path("results/current").exists():
+    raise SystemExit("Temporary results/current was not cleaned")
+if Path("figures/current").exists():
+    raise SystemExit("Temporary figures/current was not cleaned")
 
 required_tables = [
-    'results/final/candidate_clones.csv',
-    'results/supplementary_tables/01_full_clone_master.csv',
-    'results/supplementary_tables/02_patient_summary.csv',
-    'results/supplementary_tables/03_threshold_sensitivity.csv',
-    'results/supplementary_tables/04_feature_enrichment.csv',
-    'results/supplementary_tables/05_validation.csv',
-    'results/supplementary_tables/06_downsampling_iteration_convergence.csv',
+    "results/final/candidate_clones.csv",
+    "results/supplementary_tables/01_full_clone_master.csv",
+    "results/supplementary_tables/02_patient_summary.csv",
+    "results/supplementary_tables/03_threshold_sensitivity.csv",
+    "results/supplementary_tables/04_feature_enrichment.csv",
+    "results/supplementary_tables/05_validation.csv",
+    "results/supplementary_tables/06_downsampling_iteration_convergence.csv",
 ]
 for f in required_tables:
-    p=Path(f)
+    p = Path(f)
     if not p.exists() or p.stat().st_size == 0:
-        raise SystemExit(f'Missing final table: {f}')
+        raise SystemExit(f"Missing final table: {f}")
 
-main_tables = list(Path('results/final').glob('*.csv'))
-if [p.name for p in main_tables] != ['candidate_clones.csv']:
-    raise SystemExit(f'Expected one main specification table, found {[p.name for p in main_tables]}')
+main_tables = list(Path("results/final").glob("*.csv"))
+if [p.name for p in main_tables] != ["candidate_clones.csv"]:
+    raise SystemExit(
+        f"Expected one main specification table, found {[p.name for p in main_tables]}"
+    )
 
-candidate = pd.read_csv('results/final/candidate_clones.csv')
+candidate = pd.read_csv("results/final/candidate_clones.csv")
 expected_candidate_columns = [
-    'Patient', 'Nucleotide clonotype ID', 'CDR3 amino acid sequence',
-    'TRBV gene', 'TRBJ gene', 'T1 frequency (%)', 'T2 frequency (%)',
-    'Fate at 0.10%', 'T1 to T2 fold contraction', 'Loss robust to sampling',
-    'Public or private', 'Control prevalence (%)', 'Known antigen',
-    'Motif cluster', 'T3 fate', 'Candidate class',
+    "Patient",
+    "Nucleotide clonotype ID",
+    "CDR3 amino acid sequence",
+    "TRBV gene",
+    "TRBJ gene",
+    "T1 frequency (%)",
+    "T2 frequency (%)",
+    "Fate at 0.10%",
+    "T1 to T2 fold contraction",
+    "Loss robust to sampling",
+    "Public or private",
+    "Control prevalence (%)",
+    "Known antigen",
+    "Motif cluster",
+    "T3 fate",
+    "Candidate class",
 ]
 if candidate.columns.tolist() != expected_candidate_columns:
     raise SystemExit(
-        'Candidate table does not match the concise specification schema: '
-        f'{candidate.columns.tolist()}'
+        "Candidate table does not match the concise specification schema: "
+        f"{candidate.columns.tolist()}"
     )
-if candidate.duplicated(['Patient', 'Nucleotide clonotype ID']).any():
-    raise SystemExit('Candidate table contains duplicate patient-clonotype rows')
+if candidate.duplicated(["Patient", "Nucleotide clonotype ID"]).any():
+    raise SystemExit("Candidate table contains duplicate patient-clonotype rows")
 
-master = pd.read_csv('results/supplementary_tables/01_full_clone_master.csv')
+master = pd.read_csv("results/supplementary_tables/01_full_clone_master.csv")
 if master.patient.nunique() != 22:
-    raise SystemExit('Final clone master does not contain 22 patients')
+    raise SystemExit("Final clone master does not contain 22 patients")
 
-sens = pd.read_csv('results/supplementary_tables/03_threshold_sensitivity.csv')
-expected = {0.05,0.10,*[round(x/10,2) for x in range(2,16)]}
+sens = pd.read_csv("results/supplementary_tables/03_threshold_sensitivity.csv")
+expected = {0.05, 0.10, *[round(x / 10, 2) for x in range(2, 16)]}
 observed = {round(float(x), 8) for x in sens.threshold_percent.dropna().unique()}
 if observed != expected:
-    raise SystemExit(f'Final threshold table has wrong grid: {sorted(observed)}')
+    raise SystemExit(f"Final threshold table has wrong grid: {sorted(observed)}")
 
 required_figs = [
-    'figures/FIGURE_INDEX.txt',
-    'figures/rarefied/01_shared_and_fate.png',
-    'figures/rarefied/02_sampling_and_sensitivity.png',
-    'figures/rarefied/03_candidate_dumbbell_and_trbv.png',
-    'figures/rarefied/04_enrichment_and_specificity.png',
-    'figures/simpson_raw/01_simpson_metrics_and_fate.png',
-    'figures/simpson_raw/02_shared_and_sensitivity.png',
-    'figures/simpson_raw/03_candidate_dumbbell_and_trbv.png',
-    'figures/simpson_raw/04_enrichment_and_specificity.png',
-    'figures/validation/02_branch_concordance.png',
-    'figures/validation/03_threshold_selection.png',
-    'figures/validation/04_downsampling_iterations.png',
+    "figures/FIGURE_INDEX.txt",
+    "figures/rarefied/01_shared_and_fate.png",
+    "figures/rarefied/02_sampling_and_sensitivity.png",
+    "figures/rarefied/03_candidate_dumbbell_and_trbv.png",
+    "figures/rarefied/04_enrichment_and_specificity.png",
+    "figures/simpson_raw/01_simpson_metrics_and_fate.png",
+    "figures/simpson_raw/02_shared_and_sensitivity.png",
+    "figures/simpson_raw/03_candidate_dumbbell_and_trbv.png",
+    "figures/simpson_raw/04_enrichment_and_specificity.png",
+    "figures/validation/02_branch_concordance.png",
+    "figures/validation/03_threshold_selection.png",
+    "figures/validation/04_downsampling_iterations.png",
 ]
-for cohort in ['adults', 'children']:
-    required_figs.extend([
-        f'figures/{cohort}/rarefied/01_shared_and_fate.png',
-        f'figures/{cohort}/rarefied/02_sampling_and_sensitivity.png',
-        f'figures/{cohort}/rarefied/03_candidate_dumbbell_and_trbv.png',
-        f'figures/{cohort}/rarefied/04_enrichment_and_specificity.png',
-        f'figures/{cohort}/simpson_raw/01_simpson_metrics_and_fate.png',
-        f'figures/{cohort}/simpson_raw/02_shared_and_sensitivity.png',
-        f'figures/{cohort}/simpson_raw/03_candidate_dumbbell_and_trbv.png',
-        f'figures/{cohort}/simpson_raw/04_enrichment_and_specificity.png',
-        f'figures/{cohort}/validation/02_branch_concordance.png',
-        f'figures/{cohort}/validation/03_threshold_selection.png',
-        f'figures/{cohort}/validation/04_downsampling_iterations.png',
-    ])
+for cohort in ["adults", "children"]:
+    required_figs.extend(
+        [
+            f"figures/{cohort}/rarefied/01_shared_and_fate.png",
+            f"figures/{cohort}/rarefied/02_sampling_and_sensitivity.png",
+            f"figures/{cohort}/rarefied/03_candidate_dumbbell_and_trbv.png",
+            f"figures/{cohort}/rarefied/04_enrichment_and_specificity.png",
+            f"figures/{cohort}/simpson_raw/01_simpson_metrics_and_fate.png",
+            f"figures/{cohort}/simpson_raw/02_shared_and_sensitivity.png",
+            f"figures/{cohort}/simpson_raw/03_candidate_dumbbell_and_trbv.png",
+            f"figures/{cohort}/simpson_raw/04_enrichment_and_specificity.png",
+            f"figures/{cohort}/validation/02_branch_concordance.png",
+            f"figures/{cohort}/validation/03_threshold_selection.png",
+            f"figures/{cohort}/validation/04_downsampling_iterations.png",
+        ]
+    )
 for f in required_figs:
-    p=Path(f)
+    p = Path(f)
     if not p.exists() or p.stat().st_size == 0:
-        raise SystemExit(f'Missing final figure: {f}')
+        raise SystemExit(f"Missing final figure: {f}")
 
-n_patient = len(list(Path('figures/patients').glob('*.png')))
+n_patient = len(list(Path("figures/patients").glob("*.png")))
 if n_patient < 22:
-    raise SystemExit(f'Expected at least 22 patient Venn panels, found {n_patient}')
+    raise SystemExit(f"Expected at least 22 patient Venn panels, found {n_patient}")
 
-print('Final curated output contract passed')
+print("Final curated output contract passed")
 PY
 
 echo "Refresh completed successfully"

@@ -6,6 +6,7 @@ If T1 is unavailable but T2 and T3 are valid, the panel shows T2 to T3.
 Complete repertoire overlap is shown for biological context.
 The immune amnesia overlap analysis is restricted to expanded aaV clonotypes.
 """
+
 from pathlib import Path
 import os
 import shutil
@@ -64,8 +65,7 @@ def choose_pair(points):
 
 def point_table(patient, point):
     z = clones[
-        clones["patient_id"].eq(patient)
-        & clones["clinical_timepoint"].eq(point)
+        clones["patient_id"].eq(patient) & clones["clinical_timepoint"].eq(point)
     ].copy()
     z["clone_key"] = list(zip(z["cdr3aa"].astype(str), z["v_gene"].astype(str)))
     return z.set_index("clone_key", drop=False)
@@ -73,8 +73,7 @@ def point_table(patient, point):
 
 def point_metric(patient, point, column):
     z = metrics[
-        metrics["patient_id"].eq(patient)
-        & metrics["clinical_timepoint"].eq(point)
+        metrics["patient_id"].eq(patient) & metrics["clinical_timepoint"].eq(point)
     ]
     if z.empty:
         return np.nan
@@ -109,7 +108,10 @@ def format_read_equivalents(value):
 
 
 def style_venn(v):
-    for patch, color in zip(getattr(v, "patches", []) or [], [COLORS["blue"], COLORS["orange"], COLORS["teal"]]):
+    for patch, color in zip(
+        getattr(v, "patches", []) or [],
+        [COLORS["blue"], COLORS["orange"], COLORS["teal"]],
+    ):
         if patch is not None:
             patch.set_facecolor(color)
             patch.set_edgecolor("white")
@@ -118,12 +120,14 @@ def style_venn(v):
         if label is not None:
             label.set_fontsize(8.2)
             label.set_fontweight("bold")
-            label.set_bbox({
-                "facecolor": "white",
-                "edgecolor": "0.75",
-                "alpha": 0.94,
-                "boxstyle": "round,pad=0.22",
-            })
+            label.set_bbox(
+                {
+                    "facecolor": "white",
+                    "edgecolor": "0.75",
+                    "alpha": 0.94,
+                    "boxstyle": "round,pad=0.22",
+                }
+            )
     for label in getattr(v, "set_labels", []) or []:
         if label is not None:
             label.set_fontsize(9.5)
@@ -132,13 +136,17 @@ def style_venn(v):
 
 def draw_summary(ax, patient, earlier, later):
     ax.axis("off")
-    ax.set_title("Biological interpretation guide and library quality", fontsize=12, pad=10)
+    ax.set_title(
+        "Biological interpretation guide and library quality", fontsize=12, pad=10
+    )
 
     a = point_summary(patient, earlier)
     b = point_summary(patient, later)
 
     age = metrics.loc[metrics["patient_id"].eq(patient), "age_group"].iloc[0]
-    age_text = "child younger than 18 years" if age == "child" else "adult 18 years and older"
+    age_text = (
+        "child younger than 18 years" if age == "child" else "adult 18 years and older"
+    )
 
     z = meta[meta["patient_id"].eq(patient)].copy()
     z["point_order"] = z["clinical_timepoint"].map(POINT_ORDER).fillna(99)
@@ -186,17 +194,16 @@ def draw_summary(ax, patient, earlier, later):
             f"{int(row.productive_trb_clonotypes):,} productive clonotypes, {state}"
         )
 
-    later_reps = z[
-        z["clinical_timepoint"].eq(later)
-        & z["analysis_include_final"]
-    ]
+    later_reps = z[z["clinical_timepoint"].eq(later) & z["analysis_include_final"]]
     if len(later_reps) > 1:
-        lines.extend([
-            "",
-            f"{later} has {len(later_reps)} accepted libraries",
-            "Clonotype frequencies are normalized within each library and then averaged",
-            f"The patient contributes one biological {later} observation",
-        ])
+        lines.extend(
+            [
+                "",
+                f"{later} has {len(later_reps)} accepted libraries",
+                "Clonotype frequencies are normalized within each library and then averaged",
+                f"The patient contributes one biological {later} observation",
+            ]
+        )
 
     ax.text(
         0.01,
@@ -353,15 +360,17 @@ def fate_table(patient, earlier, later):
         else:
             fate = "Not detected later"
 
-        rows.append({
-            "cdr3aa": key[0],
-            "v_gene": key[1],
-            f"{earlier}_fraction": earlier_fraction,
-            f"{later}_fraction": later_fraction,
-            f"{earlier}_read_equivalents": earlier_reads,
-            f"{later}_read_equivalents": later_reads,
-            "fate": fate,
-        })
+        rows.append(
+            {
+                "cdr3aa": key[0],
+                "v_gene": key[1],
+                f"{earlier}_fraction": earlier_fraction,
+                f"{later}_fraction": later_fraction,
+                f"{earlier}_read_equivalents": earlier_reads,
+                f"{later}_read_equivalents": later_reads,
+                "fate": fate,
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -381,9 +390,11 @@ def draw_fate(ax, fate, earlier):
     ax.bar(positions, counts, color=[FATE_COLORS[x] for x in categories], width=0.68)
     ax.set_xticks(
         positions,
-        ["Retained expanded\nlater ≥ 0.10%",
-         "Detected below threshold\n0 < later < 0.10%",
-         "Not detected later\nzero observed reads"],
+        [
+            "Retained expanded\nlater ≥ 0.10%",
+            "Detected below threshold\n0 < later < 0.10%",
+            "Not detected later\nzero observed reads",
+        ],
     )
     ax.set_ylabel(f"Number of expanded {earlier} clonotypes")
     ax.set_title(
@@ -451,13 +462,15 @@ def shared_expanded_table(patient, earlier, later):
     for key in shared:
         fa = float(x.at[key, "fraction"])
         fb = float(y.at[key, "fraction"])
-        rows.append({
-            "cdr3aa": key[0],
-            "v_gene": key[1],
-            f"{earlier}_fraction": fa,
-            f"{later}_fraction": fb,
-            "mean_fraction": (fa + fb) / 2.0,
-        })
+        rows.append(
+            {
+                "cdr3aa": key[0],
+                "v_gene": key[1],
+                f"{earlier}_fraction": fa,
+                f"{later}_fraction": fb,
+                "mean_fraction": (fa + fb) / 2.0,
+            }
+        )
 
     if not rows:
         return pd.DataFrame()
@@ -486,18 +499,19 @@ def draw_shared_expanded(ax, shared, earlier, later):
         y - height / 2,
         100 * top[f"{earlier}_fraction"].to_numpy(float),
         height=height,
-        label=POINT_LABEL[earlier], color=TIME_COLORS["T1"],
+        label=POINT_LABEL[earlier],
+        color=TIME_COLORS["T1"],
     )
     ax.barh(
         y + height / 2,
         100 * top[f"{later}_fraction"].to_numpy(float),
         height=height,
-        label=POINT_LABEL[later], color=TIME_COLORS["T2"],
+        label=POINT_LABEL[later],
+        color=TIME_COLORS["T2"],
     )
 
     labels = [
-        f"{short_cdr3(row.cdr3aa)}  {row.v_gene}"
-        for row in top.itertuples(index=False)
+        f"{short_cdr3(row.cdr3aa)}  {row.v_gene}" for row in top.itertuples(index=False)
     ]
     ax.set_yticks(y, labels)
     ax.tick_params(axis="y", labelsize=7.8)
@@ -619,9 +633,7 @@ for patient in patient_ids:
 
     age = valid.loc[valid["patient_id"].eq(patient), "age_group"].iloc[0]
     age_text = (
-        "child younger than 18 years"
-        if age == "child"
-        else "adult 18 years and older"
+        "child younger than 18 years" if age == "child" else "adult 18 years and older"
     )
 
     fig.suptitle(
@@ -653,23 +665,23 @@ for patient in patient_ids:
     all_y = set(y.index)
     expanded_union = sx | sy
 
-    summary_rows.append({
-        "patient_id": patient,
-        "age_group": age,
-        "comparison": f"{earlier} to {later}",
-        "n_all_clones_earlier": len(all_x),
-        "n_all_clones_later": len(all_y),
-        "n_shared_all_clones": len(all_x & all_y),
-        "n_expanded_earlier": len(sx),
-        "n_expanded_later": len(sy),
-        "n_shared_expanded": len(sx & sy),
-        "expanded_jaccard": (
-            len(sx & sy) / len(expanded_union)
-            if expanded_union
-            else np.nan
-        ),
-        "figure": f"figures/current/patients/{patient}_expanded_repertoire.png",
-    })
+    summary_rows.append(
+        {
+            "patient_id": patient,
+            "age_group": age,
+            "comparison": f"{earlier} to {later}",
+            "n_all_clones_earlier": len(all_x),
+            "n_all_clones_later": len(all_y),
+            "n_shared_all_clones": len(all_x & all_y),
+            "n_expanded_earlier": len(sx),
+            "n_expanded_later": len(sy),
+            "n_shared_expanded": len(sx & sy),
+            "expanded_jaccard": (
+                len(sx & sy) / len(expanded_union) if expanded_union else np.nan
+            ),
+            "figure": f"figures/current/patients/{patient}_expanded_repertoire.png",
+        }
+    )
 
 index = pd.DataFrame(summary_rows)
 index.to_csv(CURRENT / "patient_panel_index.csv", index=False)

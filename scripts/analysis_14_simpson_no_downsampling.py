@@ -10,6 +10,7 @@ The same T1 clone-fate specification is applied to observed normalized frequenci
 at 0.05, 0.10, then 0.20 to 1.50 percent in 0.10 percentage-point steps.
 The primary threshold remains 0.10 percent.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,7 +32,9 @@ meta = pd.read_csv(CURRENT / "sample_metadata_current.csv")
 master = pd.read_csv(CURRENT / "paired_T1_clone_master_nt.csv")
 lib = pd.read_csv(RESULTS / "library_trb_clonotypes_nt.csv")
 
-meta["analysis_include_final"] = meta["analysis_include_final"].astype(str).str.lower().isin(["true", "1", "yes"])
+meta["analysis_include_final"] = (
+    meta["analysis_include_final"].astype(str).str.lower().isin(["true", "1", "yes"])
+)
 lib["count"] = pd.to_numeric(lib["count"], errors="coerce").fillna(0.0)
 
 case = meta[meta.analysis_include_final & meta.disease_status.eq("measles")].copy()
@@ -49,26 +52,38 @@ def lib_metrics(z: pd.DataFrame) -> dict:
     counts = counts[counts > 0]
     total = float(counts.sum())
     if total <= 0 or len(counts) == 0:
-        return {"productive_reads": 0.0, "richness": 0.0, "simpson_D": np.nan,
-                "simpson_clonality": np.nan, "normalized_richness": np.nan,
-                "top_gt1_mass": np.nan}
-    p = counts / total
-    simpson_d = float(np.sum(p * p))
+        return {
+            "productive_reads": 0.0,
+            "richness": 0.0,
+            "simpson_D": np.nan,
+            "simpson_clonality": np.nan,
+            "normalized_richness": np.nan,
+            "top_gt1_mass": np.nan,
+        }
+    frequencies = counts / total
+    simpson_d = float(np.sum(frequencies * frequencies))
     return {
         "productive_reads": total,
         "richness": float(len(counts)),
         "simpson_D": simpson_d,
         "simpson_clonality": float(np.sqrt(simpson_d)),
         "normalized_richness": float(len(counts) / total),
-        "top_gt1_mass": float(p[p > 0.01].sum()),
+        "top_gt1_mass": float(frequencies[frequencies > 0.01].sum()),
     }
 
 
 metric_rows = []
 for patient in paired:
-    pmeta = case[case.patient_id.astype(str).eq(patient) & case.clinical_timepoint.isin(["T1", "T2"])].copy()
+    pmeta = case[
+        case.patient_id.astype(str).eq(patient)
+        & case.clinical_timepoint.isin(["T1", "T2"])
+    ].copy()
     for point in ["T1", "T2"]:
-        lids = pmeta.loc[pmeta.clinical_timepoint.eq(point), "library_id"].astype(str).tolist()
+        lids = (
+            pmeta.loc[pmeta.clinical_timepoint.eq(point), "library_id"]
+            .astype(str)
+            .tolist()
+        )
         vals = []
         for lid in lids:
             z = lib[lib.library_id.astype(str).eq(lid)].copy()
@@ -108,7 +123,9 @@ for target, source in count_aliases.items():
     elif source in master.columns:
         master[target] = pd.to_numeric(master[source], errors="coerce").fillna(0.0)
     else:
-        raise RuntimeError(f"Required count information is missing: neither {target} nor {source} exists")
+        raise RuntimeError(
+            f"Required count information is missing: neither {target} nor {source} exists"
+        )
 
 raw = master.copy()
 raw["raw_log2_T2_over_T1"] = np.where(
@@ -117,7 +134,9 @@ raw["raw_log2_T2_over_T1"] = np.where(
     np.nan,
 )
 raw["raw_absolute_delta"] = raw.T2_fraction - raw.T1_fraction
-raw["raw_fold_contraction"] = np.where(raw.T2_fraction > 0, raw.T1_fraction / raw.T2_fraction, np.nan)
+raw["raw_fold_contraction"] = np.where(
+    raw.T2_fraction > 0, raw.T1_fraction / raw.T2_fraction, np.nan
+)
 raw["raw_T1_expanded_mass_share"] = np.nan
 
 for patient, idx in raw.groupby("patient").groups.items():
@@ -126,7 +145,9 @@ for patient, idx in raw.groupby("patient").groups.items():
     mask = p.T1_fraction.ge(PRIMARY)
     total = float(p.loc[mask, "T1_fraction"].sum())
     if total > 0:
-        raw.loc[p.index[mask], "raw_T1_expanded_mass_share"] = p.loc[mask, "T1_fraction"] / total
+        raw.loc[p.index[mask], "raw_T1_expanded_mass_share"] = (
+            p.loc[mask, "T1_fraction"] / total
+        )
 
 
 def direction(row):
@@ -140,6 +161,7 @@ def direction(row):
     if x <= -1:
         return "decreased"
     return "stable"
+
 
 raw["raw_direction_0_10_percent"] = raw.apply(direction, axis=1)
 raw["raw_strong_contraction"] = (
@@ -162,41 +184,55 @@ for patient in paired:
             "threshold_percent": pct,
         }
         if e.empty:
-            threshold_rows.append({
-                **base,
-                "n_T1_expanded": 0,
-                "n_T2_expanded": int(p.T2_fraction.ge(th).sum()),
-                "retained_count_percent": np.nan,
-                "below_count_percent": np.nan,
-                "not_detected_count_percent": np.nan,
-                "retained_mass_percent": np.nan,
-                "below_mass_percent": np.nan,
-                "not_detected_mass_percent": np.nan,
-            })
+            threshold_rows.append(
+                {
+                    **base,
+                    "n_T1_expanded": 0,
+                    "n_T2_expanded": int(p.T2_fraction.ge(th).sum()),
+                    "retained_count_percent": np.nan,
+                    "below_count_percent": np.nan,
+                    "not_detected_count_percent": np.nan,
+                    "retained_mass_percent": np.nan,
+                    "below_mass_percent": np.nan,
+                    "not_detected_mass_percent": np.nan,
+                }
+            )
             continue
         retained = e.T2_fraction.ge(th)
         detected = e.T2_fraction.gt(0)
         below = detected & ~retained
         lost = ~detected
         mass_total = float(e.T1_fraction.sum())
-        threshold_rows.append({
-            **base,
-            "n_T1_expanded": int(len(e)),
-            "n_T2_expanded": int(p.T2_fraction.ge(th).sum()),
-            "retained_count_percent": 100 * float(retained.mean()),
-            "below_count_percent": 100 * float(below.mean()),
-            "not_detected_count_percent": 100 * float(lost.mean()),
-            "retained_mass_percent": 100 * float(e.loc[retained, "T1_fraction"].sum()) / mass_total,
-            "below_mass_percent": 100 * float(e.loc[below, "T1_fraction"].sum()) / mass_total,
-            "not_detected_mass_percent": 100 * float(e.loc[lost, "T1_fraction"].sum()) / mass_total,
-        })
+        threshold_rows.append(
+            {
+                **base,
+                "n_T1_expanded": int(len(e)),
+                "n_T2_expanded": int(p.T2_fraction.ge(th).sum()),
+                "retained_count_percent": 100 * float(retained.mean()),
+                "below_count_percent": 100 * float(below.mean()),
+                "not_detected_count_percent": 100 * float(lost.mean()),
+                "retained_mass_percent": 100
+                * float(e.loc[retained, "T1_fraction"].sum())
+                / mass_total,
+                "below_mass_percent": 100
+                * float(e.loc[below, "T1_fraction"].sum())
+                / mass_total,
+                "not_detected_mass_percent": 100
+                * float(e.loc[lost, "T1_fraction"].sum())
+                / mass_total,
+            }
+        )
 
 threshold = pd.DataFrame(threshold_rows)
 observed = {round(float(x), 8) for x in threshold.threshold_percent.dropna().unique()}
 if observed != set(THRESHOLD_PCT):
     raise RuntimeError(f"Unexpected Simpson threshold grid: {sorted(observed)}")
-counts_per_threshold = threshold.groupby("threshold_percent").patient.nunique().to_dict()
-if any(v != 22 for v in counts_per_threshold.values()) or len(counts_per_threshold) != len(THRESHOLD_PCT):
+counts_per_threshold = (
+    threshold.groupby("threshold_percent").patient.nunique().to_dict()
+)
+if any(v != 22 for v in counts_per_threshold.values()) or len(
+    counts_per_threshold
+) != len(THRESHOLD_PCT):
     raise RuntimeError(f"Incomplete Simpson threshold coverage: {counts_per_threshold}")
 threshold.to_csv(CURRENT / "simpson_raw_threshold_sensitivity.csv", index=False)
 

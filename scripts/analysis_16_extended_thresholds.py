@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
-"""Consolidate the full expansion-threshold grid from both completed branches.
+"""Validate and combine threshold tables from rarefied and observed-frequency analyses.
 
-The expensive calculations are already performed by:
-- analysis_12_exact_rarefaction.py for pair-specific repeated rarefaction
-- analysis_14_simpson_no_downsampling.py for observed frequencies without downsampling
+This script does not repeat rarefaction. Both branches evaluate 0.05 and
+0.10 percent, then 0.20 through 1.50 percent in steps of 0.10 percentage points."""
 
-This script does not repeat rarefaction. It only validates and concatenates the two
-full sensitivity tables so the final publisher can keep a single authoritative table.
-
-Threshold grid in percent:
-0.05, 0.10, then 0.20 to 1.50 in 0.10 percentage-point steps.
-"""
 from pathlib import Path
 import pandas as pd
 
@@ -38,16 +31,25 @@ for name, df in [("pairwise_rarefied", rare), ("simpson_no_downsampling", raw)]:
     if df.patient.nunique() != 22:
         raise RuntimeError(f"{name} has {df.patient.nunique()} patients instead of 22")
     per_threshold = df.groupby("threshold_percent").patient.nunique().to_dict()
-    if len(per_threshold) != len(THRESHOLD_PCT) or any(v != 22 for v in per_threshold.values()):
-        raise RuntimeError(f"{name} has incomplete patient coverage by threshold: {per_threshold}")
+    if len(per_threshold) != len(THRESHOLD_PCT) or any(
+        v != 22 for v in per_threshold.values()
+    ):
+        raise RuntimeError(
+            f"{name} has incomplete patient coverage by threshold: {per_threshold}"
+        )
 
 # Harmonize schemas. Rarefied summaries have median and interval columns; the raw
 # branch has direct point estimates. Duplicate raw values into the median columns so
 # downstream plotting can use one schema without altering the underlying numbers.
 for base in [
-    "n_T1_expanded", "n_T2_expanded",
-    "expanded_jaccard", "retained_count_percent", "below_count_percent",
-    "not_detected_count_percent", "retained_mass_percent", "below_mass_percent",
+    "n_T1_expanded",
+    "n_T2_expanded",
+    "expanded_jaccard",
+    "retained_count_percent",
+    "below_count_percent",
+    "not_detected_count_percent",
+    "retained_mass_percent",
+    "below_mass_percent",
     "not_detected_mass_percent",
 ]:
     if base in raw.columns and f"{base}_median" not in raw.columns:
@@ -62,7 +64,9 @@ if observed != EXPECTED:
     raise RuntimeError(f"Combined threshold grid mismatch: {sorted(observed)}")
 coverage = out.groupby(["branch", "threshold_percent"]).patient.nunique()
 if (coverage != 22).any():
-    raise RuntimeError(f"Combined table has incomplete branch-threshold coverage: {coverage[coverage != 22].to_dict()}")
+    raise RuntimeError(
+        f"Combined table has incomplete branch-threshold coverage: {coverage[coverage != 22].to_dict()}"
+    )
 
 out.to_csv(RESULTS / "expanded_threshold_sensitivity_extended.csv", index=False)
 print("Full threshold grid consolidated without repeating rarefaction")

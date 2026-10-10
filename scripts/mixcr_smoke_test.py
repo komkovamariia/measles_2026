@@ -8,10 +8,12 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-NEW_DIR = Path(os.environ.get(
-    "MEASLES_NEW_FASTQ_DIR",
-    "/projects/mice_transplant_2025/raw/20260817_161454/Fastq",
-)).expanduser()
+NEW_DIR = Path(
+    os.environ.get(
+        "MEASLES_NEW_FASTQ_DIR",
+        "/projects/mice_transplant_2025/raw/20260817_161454/Fastq",
+    )
+).expanduser()
 PRESET = os.environ.get("MEASLES_MIXCR_PRESET", "milab-human-dna-tcr-multiplex")
 LOG = ROOT / "logs" / "mixcr_smoke.log"
 OUT_DIR = ROOT / "work" / "mixcr_smoke"
@@ -76,8 +78,10 @@ cmd = [
     "analyze",
     PRESET,
     "-f",
-    "--threads", "2",
-    "--limit-input", "10000",
+    "--threads",
+    "2",
+    "--limit-input",
+    "10000",
     r1_pattern,
     r2_pattern,
     str(prefix),
@@ -100,16 +104,27 @@ if proc.returncode != 0:
     tail = text.splitlines()[-80:]
     print("\nMiXCR smoke test failed. Last log lines:\n" + "\n".join(tail))
     low = text.lower()
-    if "license error" in low or "license manager" in low or "authorizationerror" in low:
+    if (
+        "license error" in low
+        or "license manager" in low
+        or "authorizationerror" in low
+    ):
         hint = (
             "Detected a MiXCR license problem. Activate or refresh the academic license "
             "with `mixcr activate-license`, and ensure the compute node can reach the "
             "MiXCR licensing service. The license may also be supplied as ~/mi.license, "
             "~/.mi.license, MI_LICENSE or MI_LICENSE_FILE."
         )
-    elif "preset" in low and ("unknown" in low or "not found" in low or "deprecated" in low):
+    elif "preset" in low and (
+        "unknown" in low or "not found" in low or "deprecated" in low
+    ):
         hint = "Detected a preset problem. Verify MEASLES_MIXCR_PRESET against the wet-lab kit."
-    elif "no files" in low or "not found" in low or "file" in low and "does not exist" in low:
+    elif (
+        "no files" in low
+        or "not found" in low
+        or "file" in low
+        and "does not exist" in low
+    ):
         hint = "Detected an input-file problem. Check the four-lane expansion and symlinks."
     else:
         hint = f"Inspect the complete MiXCR log: {LOG}"

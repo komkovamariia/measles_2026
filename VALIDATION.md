@@ -1,12 +1,12 @@
 # Repository validation
 
-Run
+Run the repository checks:
 
 ```bash
 python scripts/validate_repository.py
 ```
 
-The validator checks
+The validator checks:
 
 - 112 sequencing libraries are represented
 - 96 new libraries and 16 legacy libraries are present
@@ -24,4 +24,4 @@ The validator checks
 - expanded clone analysis uses the 0.10 percent threshold
 - the corrected legacy patient identities are preserved
 
-The validator checks repository configuration and analysis contracts. It does not replace a successful analysis run on the cluster
+These checks validate repository configuration and analysis settings. A complete run on the cluster is still needed to validate the analysis with sequencing inputs.

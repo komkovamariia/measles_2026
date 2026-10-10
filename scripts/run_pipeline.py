@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Notebook runner for the measles TRB project"""
+
 from __future__ import annotations
 
 import argparse
@@ -29,7 +30,13 @@ def execute_notebook(path: Path, extra_env: dict[str, str]) -> None:
     started = time.time()
     try:
         notebook = nbformat.read(path, as_version=4)
-        client = NotebookClient(notebook, timeout=None, kernel_name="python3", resources={"metadata": {"path": str(ROOT)}}, allow_errors=False)
+        client = NotebookClient(
+            notebook,
+            timeout=None,
+            kernel_name="python3",
+            resources={"metadata": {"path": str(ROOT)}},
+            allow_errors=False,
+        )
         client.execute()
         nbformat.write(notebook, output)
         with log_path.open("a", encoding="utf-8") as log:
@@ -58,37 +65,47 @@ def require_files(paths, label):
 
 
 def verify_prepare_outputs():
-    require_files([
-        "results/sample_manifest_resolved.csv",
-        "results/fastq_audit.csv",
-        "results/sample_qc.csv",
-        "results/mixcr_run_status.csv",
-    ], "Preprocessing")
+    require_files(
+        [
+            "results/sample_manifest_resolved.csv",
+            "results/fastq_audit.csv",
+            "results/sample_qc.csv",
+            "results/mixcr_run_status.csv",
+        ],
+        "Preprocessing",
+    )
     if not list((ROOT / "results" / "clonotypes").glob("*.tsv")):
         raise RuntimeError("No MiXCR clonotype TSV files were produced")
 
 
 def verify_analysis_outputs():
-    require_files([
-        "results/library_trb_clonotypes.csv",
-        "results/combined_trb_clonotypes.csv",
-        "results/diversity_metrics.csv",
-        "results/current/sample_metadata_current.csv",
-        "results/current/cross_sectional_statistics.csv",
-        "results/current/longitudinal_expanded_clone_summary.csv",
-        "results/current/expanded_clone_fates.csv",
-        "results/current/new_T2_expansions.csv",
-        "results/current/expanded_TRBV_usage.csv",
-        "results/current/patient_panel_index.csv",
-        "figures/FIGURE_INDEX.txt",
-    ], "Analysis")
+    require_files(
+        [
+            "results/library_trb_clonotypes.csv",
+            "results/combined_trb_clonotypes.csv",
+            "results/diversity_metrics.csv",
+            "results/current/sample_metadata_current.csv",
+            "results/current/cross_sectional_statistics.csv",
+            "results/current/longitudinal_expanded_clone_summary.csv",
+            "results/current/expanded_clone_fates.csv",
+            "results/current/new_T2_expansions.csv",
+            "results/current/expanded_TRBV_usage.csv",
+            "results/current/patient_panel_index.csv",
+            "figures/FIGURE_INDEX.txt",
+        ],
+        "Analysis",
+    )
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stage", choices=["prepare", "analysis", "all"], default="all")
+    parser.add_argument(
+        "--stage", choices=["prepare", "analysis", "all"], default="all"
+    )
     parser.add_argument("--pilot", action="store_true")
-    parser.add_argument("--cpus", type=int, default=int(os.getenv("SLURM_CPUS_PER_TASK", "1")))
+    parser.add_argument(
+        "--cpus", type=int, default=int(os.getenv("SLURM_CPUS_PER_TASK", "1"))
+    )
     parser.add_argument("--threads-per-sample", type=int, default=4)
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
@@ -106,6 +123,7 @@ def main():
             verify_prepare_outputs()
         execute_notebook(STAGES["analysis"], env)
         verify_analysis_outputs()
+
 
 if __name__ == "__main__":
     main()

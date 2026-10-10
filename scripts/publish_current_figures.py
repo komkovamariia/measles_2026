@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Publish a compact final figure set with a shallow directory structure."""
+
 from pathlib import Path
 import shutil
 
@@ -42,20 +43,41 @@ def copy_stem(stem, target, required=False):
         raise RuntimeError(f"Required final figure is missing: {stem}")
     return copied
 
+
 published = {k: [] for k in OUT}
 
 # Main biological conclusions from the clone-level specification.
-published["main"] += copy_stem("21_primary_fate_pairwise_rarefied", OUT["main"], required=True)
-published["main"] += copy_stem("24_lost_vs_retained_enrichment", OUT["main"], required=False)
-published["main"] += copy_stem("25_sequence_neighbourhoods", OUT["main"], required=False)
+published["main"] += copy_stem(
+    "21_primary_fate_pairwise_rarefied", OUT["main"], required=True
+)
+published["main"] += copy_stem(
+    "24_lost_vs_retained_enrichment", OUT["main"], required=False
+)
+published["main"] += copy_stem(
+    "25_sequence_neighbourhoods", OUT["main"], required=False
+)
 
 # Sampling and threshold sensitivity each have one dedicated conclusion figure.
-published["downsampling_pairwise"] += copy_stem("22_sampling_robust_clone_loss", OUT["downsampling_pairwise"], required=True)
-published["sensitivity_thresholds"] += copy_stem("23_threshold_sensitivity_pairwise_rarefied", OUT["sensitivity_thresholds"], required=True)
-published["validation"] += copy_stem("26_validation_identity_T3_batch", OUT["validation"], required=True)
+published["downsampling_pairwise"] += copy_stem(
+    "22_sampling_robust_clone_loss", OUT["downsampling_pairwise"], required=True
+)
+published["sensitivity_thresholds"] += copy_stem(
+    "23_threshold_sensitivity_pairwise_rarefied",
+    OUT["sensitivity_thresholds"],
+    required=True,
+)
+published["validation"] += copy_stem(
+    "26_validation_identity_T3_batch", OUT["validation"], required=True
+)
 
 # Patient panels remain an explicit, separate biological layer.
-patient_files = sorted(p for p in CURRENT_PATIENTS.iterdir() if p.suffix.lower() in {".png", ".pdf"}) if CURRENT_PATIENTS.exists() else []
+patient_files = (
+    sorted(
+        p for p in CURRENT_PATIENTS.iterdir() if p.suffix.lower() in {".png", ".pdf"}
+    )
+    if CURRENT_PATIENTS.exists()
+    else []
+)
 if not patient_files:
     raise RuntimeError("No final patient figures were generated")
 for src in patient_files:
@@ -101,26 +123,35 @@ lines = [
     "",
     "Published files",
 ]
-for section in ["main", "downsampling_pairwise", "sensitivity_thresholds", "validation", "patients", "supplementary"]:
+for section in [
+    "main",
+    "downsampling_pairwise",
+    "sensitivity_thresholds",
+    "validation",
+    "patients",
+    "supplementary",
+]:
     lines.append(f"[{section}]")
     lines.extend(str(p.relative_to(FIG)) for p in published[section])
 
-lines.extend([
-    "",
-    "Analysis logic",
-    "Physical tracking uses CDR3 nucleotide plus TRBV plus TRBJ",
-    "Functional and public analysis uses CDR3 amino acid plus TRBV plus TRBJ",
-    "Primary T1 expanded threshold is 0.10 percent",
-    "Sensitivity thresholds are 0.05 0.10 0.20 0.50 0.75 and 1.00 percent",
-    "Each T1-T2 pair is repeatedly rarefied to its own within-pair minimum productive-read depth",
-    "At least 500 rarefaction iterations are required",
-    "P_detection_if_unchanged is empirical from the repeated internal T1 sampling null",
-    "T2 zero values use a detection upper bound and no arbitrary pseudocount",
-    "Patient-aware enrichment adjusts for baseline T1 clone frequency and within-patient dependence",
-    "Sequence-neighbour clusters are edit-distance neighbourhoods and are not labelled TCRdist clusters",
-    "HLA compatibility remains not available without patient HLA typing",
-    "БА1_071 T2 replicate libraries are rarefied separately and averaged only after within-library normalization",
-])
+lines.extend(
+    [
+        "",
+        "Analysis logic",
+        "Physical tracking uses CDR3 nucleotide plus TRBV plus TRBJ",
+        "Functional and public analysis uses CDR3 amino acid plus TRBV plus TRBJ",
+        "Primary T1 expanded threshold is 0.10 percent",
+        "Sensitivity thresholds are 0.05 0.10 0.20 0.50 0.75 and 1.00 percent",
+        "Each T1-T2 pair is repeatedly rarefied to its own within-pair minimum productive-read depth",
+        "At least 500 rarefaction iterations are required",
+        "P_detection_if_unchanged is empirical from the repeated internal T1 sampling null",
+        "T2 zero values use a detection upper bound and no arbitrary pseudocount",
+        "Patient-aware enrichment adjusts for baseline T1 clone frequency and within-patient dependence",
+        "Sequence-neighbour clusters are edit-distance neighbourhoods and are not labelled TCRdist clusters",
+        "HLA compatibility remains not available without patient HLA typing",
+        "БА1_071 T2 replicate libraries are rarefied separately and averaged only after within-library normalization",
+    ]
+)
 index.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 # Remove the internal staging tree after successful publication so figures/ stays clean.

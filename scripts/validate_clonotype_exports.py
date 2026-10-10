@@ -22,8 +22,12 @@ def positive_data_row(path: Path) -> bool:
             header = next(reader, None)
             if not header:
                 return False
-            count_col = next((c for c in ["cloneCount", "readCount", "count"] if c in header), None)
-            aa_col = next((c for c in ["aaSeqCDR3", "cdr3aa", "cdr3_aa"] if c in header), None)
+            count_col = next(
+                (c for c in ["cloneCount", "readCount", "count"] if c in header), None
+            )
+            aa_col = next(
+                (c for c in ["aaSeqCDR3", "cdr3aa", "cdr3_aa"] if c in header), None
+            )
             if count_col is None or aa_col is None:
                 return False
             ci, ai = header.index(count_col), header.index(aa_col)
@@ -47,7 +51,9 @@ def main() -> None:
     args = parser.parse_args()
 
     manifest = pd.read_csv(MANIFEST)
-    included = manifest[manifest["include"].astype(str).str.lower().isin(["true", "1", "yes"])].copy()
+    included = manifest[
+        manifest["include"].astype(str).str.lower().isin(["true", "1", "yes"])
+    ].copy()
 
     invalid = []
     for lib in included["library_id"].astype(str):
@@ -60,7 +66,10 @@ def main() -> None:
 
     if args.remove_invalid:
         if invalid:
-            print("Invalid exports removed so MiXCR resume will regenerate them:", ", ".join(invalid))
+            print(
+                "Invalid exports removed so MiXCR resume will regenerate them:",
+                ", ".join(invalid),
+            )
         else:
             print("No invalid existing MiXCR exports found.")
         return
@@ -76,7 +85,9 @@ def main() -> None:
             "CLONOTYPE EXPORT VALIDATION FAILED: included libraries without a positive productive TRB export: "
             + ", ".join(missing_or_invalid)
         )
-    print(f"Clonotype export validation passed: {len(included)} included libraries have positive TRB exports.")
+    print(
+        f"Clonotype export validation passed: {len(included)} included libraries have positive TRB exports."
+    )
 
 
 if __name__ == "__main__":
