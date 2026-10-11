@@ -187,8 +187,8 @@ for patient in paired:
         p_null = 1.0 - np.power(
             1.0 - np.clip(f1[key_indices], 0.0, 1.0), null_total_reads
         )
-        # Exact conditional probability, not an additional Bernoulli draw. The
-        # only Monte Carlo variation now comes from the rarefied T1 frequency.
+        # Averaging exact probabilities avoids an extra Bernoulli draw;
+        # variation in this null comes only from rarefied T1 frequencies.
         null_detection_probability_sum += p_null
 
         r1, h1, c1, s1 = repertoire_metrics(f1)

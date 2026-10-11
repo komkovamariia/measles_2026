@@ -38,9 +38,7 @@ if [[ ! -d "$MEASLES_LEGACY_FASTQ_DIR" ]]; then
   exit 1
 fi
 
-# MiXCR is part of this project's conda environment. The historical mouse
-# analysis normally reused existing MiXCR exports, so it did not need to install
-# MiXCR in its analysis environment. Here we preprocess raw FASTQ from scratch.
+# Use MiXCR from the project conda environment for raw FASTQ preprocessing.
 if [[ -z "${MEASLES_MIXCR_BIN:-}" ]]; then
   if command -v mixcr >/dev/null 2>&1; then
     export MEASLES_MIXCR_BIN="$(command -v mixcr)"

@@ -22,7 +22,7 @@ marker = CURRENT / "GENERATED_CURRENT.txt"
 if not marker.exists():
     raise RuntimeError("Final figure marker is missing")
 
-# Remove stale published trees, including the former catch-all group directory.
+# Reset published directories, including group/ from earlier runs.
 for name in ["group", *OUT]:
     d = FIG / name
     if d.exists():
@@ -46,7 +46,7 @@ def copy_stem(stem, target, required=False):
 
 published = {k: [] for k in OUT}
 
-# Main biological conclusions from the clone-level specification.
+# Main clone-fate figures.
 published["main"] += copy_stem(
     "21_primary_fate_pairwise_rarefied", OUT["main"], required=True
 )
@@ -57,7 +57,7 @@ published["main"] += copy_stem(
     "25_sequence_neighbourhoods", OUT["main"], required=False
 )
 
-# Sampling and threshold sensitivity each have one dedicated conclusion figure.
+# Keep sampling and threshold sensitivity in separate directories.
 published["downsampling_pairwise"] += copy_stem(
     "22_sampling_robust_clone_loss", OUT["downsampling_pairwise"], required=True
 )
@@ -70,7 +70,7 @@ published["validation"] += copy_stem(
     "26_validation_identity_T3_batch", OUT["validation"], required=True
 )
 
-# Patient panels remain an explicit, separate biological layer.
+# Keep individual patient panels together.
 patient_files = (
     sorted(
         p for p in CURRENT_PATIENTS.iterdir() if p.suffix.lower() in {".png", ".pdf"}
@@ -85,7 +85,7 @@ for src in patient_files:
     shutil.copy2(src, dst)
     published["patients"].append(dst)
 
-# Preserve only useful old context. Old TRBV heatmaps and duplicate exploratory plots are not published.
+# Retain these contextual figures; omit TRBV heatmaps and duplicate exploratory plots.
 for stem in [
     "09_specificity_reference_coverage",
     "10_complete_clonotype_overlap_summary",
@@ -154,7 +154,7 @@ lines.extend(
 )
 index.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-# Remove the internal staging tree after successful publication so figures/ stays clean.
+# Remove staging files after successful publication.
 shutil.rmtree(CURRENT)
 
 for section in published:

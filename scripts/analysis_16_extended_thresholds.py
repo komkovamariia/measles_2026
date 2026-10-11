@@ -38,9 +38,8 @@ for name, df in [("pairwise_rarefied", rare), ("simpson_no_downsampling", raw)]:
             f"{name} has incomplete patient coverage by threshold: {per_threshold}"
         )
 
-# Harmonize schemas. Rarefied summaries have median and interval columns; the raw
-# branch has direct point estimates. Duplicate raw values into the median columns so
-# downstream plotting can use one schema without altering the underlying numbers.
+# Repeat raw point estimates in the median and interval columns to match the
+# rarefied schema used by downstream plots. This leaves the estimates unchanged.
 for base in [
     "n_T1_expanded",
     "n_T2_expanded",

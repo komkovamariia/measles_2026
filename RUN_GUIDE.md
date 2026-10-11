@@ -37,7 +37,7 @@ The preparation and early reporting scripts build metadata, patient Venn panels 
 
 `analysis_10_clone_fate_v2.py` builds the master table with one row per T1 nucleotide clonotype.
 
-`analysis_12_exact_rarefaction.py` is the primary sampling-controlled branch. Each patient pair is repeatedly rarefied to that pair's own minimum accepted T1/T2 library depth. At least 500 iterations are required. The complete threshold grid is evaluated inside these same rarefaction iterations, so the expensive sampling is not repeated separately for each threshold.
+`analysis_12_exact_rarefaction.py` is the primary sampling-controlled branch. Each patient pair is repeatedly rarefied to that pair's own minimum accepted T1/T2 library depth. At least 500 iterations are required. The complete threshold grid uses the same rarefaction draws, so sampling runs once for all thresholds.
 
 `analysis_11_clone_enrichment.py` performs patient-aware TRBV, TRBJ and CDR3-motif enrichment after sampling correction.
 
@@ -107,9 +107,7 @@ The enrichment endpoint is narrower than the direction classification. Contracte
 
 ## Figures
 
-Patient Venn panels are retained as the first layer.
-
-The final rarefied branch then shows:
+Patient Venn panels precede the final rarefied figures, which show:
 
 1. changes in representation inside the shared T1-expanded segment and overall T1 clone fate
 2. sampling robustness and threshold sensitivity across 0.05 to 1.50 percent

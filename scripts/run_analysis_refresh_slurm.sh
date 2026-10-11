@@ -54,7 +54,7 @@ if [[ ! -s results/clonotypes/new_111.tsv ]]; then
   python scripts/preprocess_human_trb.py
 fi
 
-# Restore reusable computational caches if a previous clean run moved them out of the root.
+# Restore analysis inputs from cache when they are absent from results/.
 for f in combined_trb_clonotypes.csv diversity_metrics.csv library_trb_clonotypes.csv library_trb_clonotypes_nt.csv; do
   if [[ ! -e "results/$f" && -s "results/cache/$f" ]]; then
     cp -f "results/cache/$f" "results/$f"
@@ -84,7 +84,7 @@ export MEASLES_RAREFACTION_ITERATIONS="$PAIR_ITERATIONS"
 python scripts/analysis_12_exact_rarefaction.py
 python scripts/analysis_11_clone_enrichment.py
 python scripts/analysis_14_simpson_no_downsampling.py
-# Authoritative threshold grid for both branches: 0.05, 0.10, 0.20, 0.30 ... 1.50 percent.
+# Shared threshold grid: 0.05, 0.10, 0.20, 0.30 ... 1.50 percent.
 python scripts/analysis_16_extended_thresholds.py
 
 python - <<'PY'

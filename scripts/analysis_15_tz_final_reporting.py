@@ -209,9 +209,8 @@ master["candidate_class_simpson_raw"] = master.apply(
 
 
 def enrichment_for_branch(df, branch):
-    # Every enrichment, including age-specific reruns, starts from the same
-    # pre-specified T1-expanded pool. Reindexing avoids silently including
-    # non-primary clones after a subgroup filter.
+    # Reindex the fixed T1-expanded pool for each subgroup so enrichment
+    # cannot include clones outside the primary pool.
     subgroup_primary = primary_mask.reindex(df.index).fillna(False).astype(bool)
     clones = df.loc[subgroup_primary].copy()
     if branch == "rarefied":
@@ -374,8 +373,8 @@ candidates["fold_contraction_is_lower_bound"] = (
 )
 
 
-# The final candidate table follows the concise schema shown in the specification.
-# Calculation-only fields remain available in the supplementary full clone master.
+# Keep the specified candidate schema; calculation fields stay in the
+# supplementary full clone master.
 def as_boolean(value):
     if pd.isna(value):
         return False

@@ -27,7 +27,7 @@ Each T1-expanded clone is classified at T2 as retained expanded, detected below 
 
 The master table also reports T1 and T2 counts and fractions, absolute change, log2 T2 over T1 for nonzero T2, fold contraction, contribution to the original T1 expanded mass, sampling robustness, public or private status, control prevalence, available antigen annotation, sequence cluster, T3 fate and candidate class.
 
-A zero T2 value never receives an arbitrary pseudocount. A depth-based upper detection bound is retained.
+Zero T2 values are reported with a depth-based upper detection bound and no pseudocount.
 
 ## Branch 1: pair-specific repeated rarefaction
 

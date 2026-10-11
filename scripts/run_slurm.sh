@@ -31,9 +31,7 @@ export MEASLES_LEGACY_FASTQ_DIR="${MEASLES_LEGACY_FASTQ_DIR:-/projects/mice_tran
 export MEASLES_REQUIRE_ALL_INPUTS=1
 export MEASLES_MIXCR_MEMORY_GB="${MEASLES_MIXCR_MEMORY_GB:-8}"
 
-# The active mouse analysis normally consumed already generated MiXCR exports.
-# For this fresh-start human project MiXCR is installed in the project conda
-# environment so the raw FASTQ preprocessing is reproducible on this account.
+# Use MiXCR from the project conda environment for raw FASTQ preprocessing.
 if [[ -z "${MEASLES_MIXCR_BIN:-}" ]]; then
   if command -v mixcr >/dev/null 2>&1; then
     export MEASLES_MIXCR_BIN="$(command -v mixcr)"
@@ -65,8 +63,7 @@ head -n 1 results/slurm_mixcr_version.txt
 
 python scripts/validate_repository.py
 
-# Test the same MiXCR executable and preset on a small real input before the
-# full parallel batch. If it fails, the log contains the actual MiXCR message.
+# Check the MiXCR executable and preset on a small input before the full batch.
 python scripts/mixcr_smoke_test.py
 
 python scripts/run_pipeline.py \

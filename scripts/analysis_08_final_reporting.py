@@ -201,9 +201,7 @@ if ref.exists():
         fig.savefig(FIG / "09_specificity_reference_coverage.pdf", bbox_inches="tight")
         plt.close(fig)
 
-# -----------------------------------------------------------------------------
 # Patient averaged overlap summaries for the paired T1 and T2 cohort
-# -----------------------------------------------------------------------------
 
 
 def point_table(patient, point):

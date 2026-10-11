@@ -41,7 +41,7 @@ meta["analysis_include_final"] = (
     meta.analysis_include_final.astype(str).str.lower().isin(["true", "1", "yes"])
 )
 
-# The empirical pair-specific sampling result is authoritative for the final candidate class.
+# Use pair-specific sampling to assign the final candidate class.
 primary_mask = (
     master["expanded_T1_0_10_percent"]
     .astype(str)
