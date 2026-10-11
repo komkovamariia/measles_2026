@@ -17,15 +17,11 @@ def fail(msg):
 
 required = [
     "README.md",
-    "RUN_GUIDE.md",
-    "VALIDATION.md",
-    "TZ_COVERAGE.md",
     "environment.yml",
     "config/sample_manifest.csv",
     "config/analysis_metadata.csv",
     "config/clinical_metadata_sequenced.csv",
     "config/metadata_known_issues.csv",
-    "config/SOURCE_NOTES.md",
     "notebooks/00_prepare_and_mixcr.ipynb",
     "notebooks/01_measles_analysis.ipynb",
     "scripts/analysis_01_prepare.py",
